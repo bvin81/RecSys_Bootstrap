@@ -729,7 +729,7 @@ if __name__ == '__main__':
     else:
         debug_log("⚠️ MAIN: Receptek betöltése sikertelen!")
     
-    app.run(debug=debug, host='0.0.0.0', port=port) Hiba: {e}</h3><a href='/status'>Status</a>"
+    app.run(debug=debug, host='0.0.0.0', port=port)
 
 @app.route('/search', methods=['POST'])
 def search():
