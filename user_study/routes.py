@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-User Study Routes - Complete Version with Metrics & JSON Loading
-================================================================
+User Study Routes - Complete Fixed Version
+==========================================
 """
 import os
 import random
@@ -19,7 +19,6 @@ try:
     print("✅ Scientific libraries loaded")
 except ImportError as e:
     print(f"⚠️ Scientific libraries missing: {e}")
-    print("🔧 Using Python built-ins as fallback")
     class MockPandas:
         def read_csv(self, *args, **kwargs): return []
     pd = MockPandas()
@@ -29,22 +28,19 @@ except ImportError as e:
 user_study_bp = Blueprint('user_study', __name__, url_prefix='')
 
 # =============================================================================
-# RECIPE DATA LOADING FROM JSON
+# RECIPE DATA LOADING
 # =============================================================================
 
 class RecipeDataLoader:
-    """Real recipe data loading from JSON files"""
-    
     def __init__(self):
         self.recipes = []
         self.loaded = False
         self.load_recipes()
     
     def load_recipes(self):
-        """Load recipes from JSON file with fallbacks"""
         json_files = [
             'greenrec_dataset.json',
-            'data/greenrec_dataset.json',
+            'data/greenrec_dataset.json', 
             'hungarian_recipes.json',
             'data/hungarian_recipes.json',
             'recipes.json'
@@ -57,13 +53,11 @@ class RecipeDataLoader:
                     with open(json_file, 'r', encoding='utf-8') as f:
                         data = json.load(f)
                     
-                    # Handle different JSON structures
                     if isinstance(data, list):
                         self.recipes = data
                     elif isinstance(data, dict):
                         self.recipes = data.get('recipes', data.get('data', []))
                     
-                    # Validate and process recipes
                     self.recipes = self.validate_and_process_recipes(self.recipes)
                     
                     if self.recipes:
@@ -75,17 +69,14 @@ class RecipeDataLoader:
                     print(f"❌ Error loading {json_file}: {e}")
                     continue
         
-        # Fallback to sample data if no JSON found
-        print("⚠️ No recipe JSON found, using enhanced sample data")
+        print("⚠️ No recipe JSON found, using sample data")
         self.create_sample_recipes()
     
     def validate_and_process_recipes(self, recipes):
-        """Validate and standardize recipe format"""
         processed = []
         
         for i, recipe in enumerate(recipes):
             try:
-                # Ensure required fields
                 processed_recipe = {
                     'id': recipe.get('id', f'recipe_{i+1:03d}'),
                     'name': recipe.get('name', recipe.get('title', f'Recept {i+1}')),
@@ -100,11 +91,8 @@ class RecipeDataLoader:
                     'servings': recipe.get('servings', recipe.get('portions', 4))
                 }
                 
-                # Calculate composite score
                 processed_recipe['composite_score'] = self.calculate_composite_score(
-                    processed_recipe['ESI'], 
-                    processed_recipe['HSI'], 
-                    processed_recipe['PPI']
+                    processed_recipe['ESI'], processed_recipe['HSI'], processed_recipe['PPI']
                 )
                 
                 processed.append(processed_recipe)
@@ -116,19 +104,16 @@ class RecipeDataLoader:
         return processed
     
     def extract_ingredients(self, recipe):
-        """Extract ingredients list from various formats"""
         ingredients = recipe.get('ingredients', [])
         
         if isinstance(ingredients, str):
-            # Split string ingredients
             return [ing.strip() for ing in ingredients.replace(',', '\n').split('\n') if ing.strip()]
         elif isinstance(ingredients, list):
             return [str(ing).strip() for ing in ingredients if str(ing).strip()]
         else:
-            return ['hagyma', 'fokhagyma', 'paradicsom', 'paprika']  # fallback
+            return ['hagyma', 'fokhagyma', 'paradicsom', 'paprika']
     
     def safe_float(self, value, default=50):
-        """Safe float conversion with default"""
         try:
             if value is None:
                 return default
@@ -137,12 +122,8 @@ class RecipeDataLoader:
             return default
     
     def calculate_composite_score(self, esi, hsi, ppi):
-        """Calculate weighted composite score"""
-        # Weights: sustainability 40%, health 40%, popularity 20%
         return round(esi * 0.4 + hsi * 0.4 + ppi * 0.2, 1)
-    
-    def create_sample_recipes(self):
-        """Create enhanced sample recipes if no JSON available"""
+        def create_sample_recipes(self):
         sample_recipes = [
             {
                 'id': 'recipe_001', 'name': '🥗 Mediterrán Quinoa Saláta',
@@ -194,7 +175,6 @@ class RecipeDataLoader:
             }
         ]
         
-        # Process and add composite scores
         for recipe in sample_recipes:
             recipe['composite_score'] = self.calculate_composite_score(
                 recipe['ESI'], recipe['HSI'], recipe['PPI']
@@ -202,142 +182,116 @@ class RecipeDataLoader:
         
         self.recipes = sample_recipes
         self.loaded = True
-        print(f"✅ Created {len(self.recipes)} enhanced sample recipes")
+        print(f"✅ Created {len(self.recipes)} sample recipes")
 
 # =============================================================================
 # RECOMMENDATION ENGINE
 # =============================================================================
 
 class SmartRecommender:
-    """Smart recommendation engine with A/B/C testing"""
-    
     def __init__(self, recipe_loader):
         self.recipe_loader = recipe_loader
-        self.user_ratings = {}  # {user_id: {recipe_id: rating}}
-        self.user_preferences = {}  # {user_id: preferences}
+        self.user_ratings = {}
+        self.user_preferences = {}
     
     def recommend(self, search_query="", n_recommendations=5, version="v1", user_id=None):
-        """Get recommendations based on version (A/B/C testing)"""
         recipes = self.recipe_loader.recipes.copy()
         
         if not recipes:
             return []
         
-        # Apply search filter
         if search_query:
             recipes = self.search_recipes(recipes, search_query)
         
-        # Apply version-specific algorithms
-        if version == 'v1':  # Group A - Basic sustainability focus
+        if version == 'v1':
             return self.sustainability_focused_recommendations(recipes, n_recommendations)
-        elif version == 'v2':  # Group B - Balanced approach
+        elif version == 'v2':
             return self.balanced_recommendations(recipes, n_recommendations)
-        elif version == 'v3':  # Group C - Personalized ML
+        elif version == 'v3':
             return self.personalized_recommendations(recipes, n_recommendations, user_id)
         else:
             return self.balanced_recommendations(recipes, n_recommendations)
     
     def search_recipes(self, recipes, query):
-        """Search recipes by name and ingredients"""
         query = query.lower().strip()
         filtered = []
         
         for recipe in recipes:
-            # Search in name
             if query in recipe['name'].lower():
                 filtered.append(recipe)
                 continue
             
-            # Search in ingredients
             ingredients_text = ' '.join(recipe['ingredients']).lower()
             if query in ingredients_text:
                 filtered.append(recipe)
                 continue
             
-            # Search in description
             if query in recipe['description'].lower():
                 filtered.append(recipe)
         
         return filtered
     
     def sustainability_focused_recommendations(self, recipes, n):
-        """Version A: Focus on environmental sustainability"""
-        # Sort by ESI (lower is better) + HSI
         scored_recipes = []
         for recipe in recipes:
-            score = recipe['ESI'] * 0.7 + recipe['HSI'] * 0.3  # ESI priority
+            score = recipe['ESI'] * 0.7 + recipe['HSI'] * 0.3
             scored_recipes.append((score, recipe))
         
-        # Sort by score (lower ESI is better)
         scored_recipes.sort(key=lambda x: x[0])
         return [recipe for _, recipe in scored_recipes[:n]]
     
     def balanced_recommendations(self, recipes, n):
-        """Version B: Balanced approach"""
-        # Use composite score (already calculated)
         sorted_recipes = sorted(recipes, key=lambda r: r['composite_score'], reverse=True)
         return sorted_recipes[:n]
     
     def personalized_recommendations(self, recipes, n, user_id):
-        """Version C: Personalized based on user ratings"""
         if not user_id or user_id not in self.user_ratings:
-            # Fallback to balanced if no user data
             return self.balanced_recommendations(recipes, n)
         
         user_ratings = self.user_ratings[user_id]
         
-        # Calculate preferences based on ratings
         preferred_categories = set()
         liked_ingredients = set()
         
         for recipe_id, rating in user_ratings.items():
-            if rating >= 4:  # Liked recipes
+            if rating >= 4:
                 recipe = next((r for r in self.recipe_loader.recipes if r['id'] == recipe_id), None)
                 if recipe:
                     preferred_categories.add(recipe['category'])
                     liked_ingredients.update(recipe['ingredients'])
         
-        # Score recipes based on preferences
         scored_recipes = []
         for recipe in recipes:
             score = recipe['composite_score']
             
-            # Boost score for preferred categories
             if recipe['category'] in preferred_categories:
                 score += 10
             
-            # Boost score for liked ingredients
             ingredient_match = len(set(recipe['ingredients']) & liked_ingredients)
             score += ingredient_match * 2
             
             scored_recipes.append((score, recipe))
         
-        # Sort by personalized score
         scored_recipes.sort(key=lambda x: x[0], reverse=True)
         return [recipe for _, recipe in scored_recipes[:n]]
     
     def rate_recipe(self, user_id, recipe_id, rating):
-        """Store user rating"""
         if user_id not in self.user_ratings:
             self.user_ratings[user_id] = {}
         self.user_ratings[user_id][recipe_id] = rating
         print(f"📊 User {user_id} rated recipe {recipe_id}: {rating} stars")
-
-# =============================================================================
-# METRICS AND ANALYTICS
+        # =============================================================================
+# METRICS TRACKER
 # =============================================================================
 
 class MetricsTracker:
-    """Track and analyze user interactions and recommendations"""
-    
     def __init__(self):
-        self.interactions = []  # List of interaction events
-        self.ratings = {}      # {user_id: {recipe_id: rating}}
-        self.recommendations = []  # List of recommendation events
-        self.sessions = {}     # {user_id: session_data}
+        self.interactions = []
+        self.ratings = {}
+        self.recommendations = []
+        self.sessions = {}
     
     def track_recommendation(self, user_id, version, query, recipes, timestamp=None):
-        """Track a recommendation event"""
         event = {
             'timestamp': timestamp or datetime.now().isoformat(),
             'user_id': user_id,
@@ -349,7 +303,6 @@ class MetricsTracker:
         self.recommendations.append(event)
     
     def track_rating(self, user_id, recipe_id, rating, timestamp=None):
-        """Track a rating event"""
         if user_id not in self.ratings:
             self.ratings[user_id] = {}
         self.ratings[user_id][recipe_id] = rating
@@ -364,21 +317,17 @@ class MetricsTracker:
         self.interactions.append(event)
     
     def get_dashboard_data(self):
-        """Get metrics for dashboard"""
         total_users = len(self.sessions)
         total_ratings = sum(len(ratings) for ratings in self.ratings.values())
         total_recommendations = len(self.recommendations)
         
-        # Calculate average ratings by version
         version_stats = {'v1': [], 'v2': [], 'v3': []}
         for user_id, user_ratings in self.ratings.items():
             version = self.sessions.get(user_id, {}).get('version', 'v1')
             version_stats[version].extend(user_ratings.values())
         
-        # Calculate key metrics
         key_metrics = {}
         
-        # Precision@5 simulation (simplified)
         if total_ratings > 0:
             relevant_ratings = sum(1 for ratings in self.ratings.values() 
                                  for rating in ratings.values() if rating >= 4)
@@ -387,21 +336,18 @@ class MetricsTracker:
                 'count': total_ratings
             }
             
-            # Diversity metric (simplified)
             key_metrics['Recommendation Diversity'] = {
                 'value': min(1.0, total_recommendations / max(total_users * 5, 1)),
                 'count': total_recommendations
             }
             
-            # User satisfaction
             avg_rating = sum(rating for ratings in self.ratings.values() 
                            for rating in ratings.values()) / max(total_ratings, 1)
             key_metrics['User Satisfaction'] = {
-                'value': avg_rating / 5.0,  # Normalize to 0-1
+                'value': avg_rating / 5.0,
                 'count': total_ratings
             }
         else:
-            # Default metrics when no data
             key_metrics = {
                 'Precision@5': {'value': 0.75, 'count': 0},
                 'Recommendation Diversity': {'value': 0.65, 'count': 0},
@@ -422,7 +368,6 @@ class MetricsTracker:
         }
     
     def get_evaluation_summary(self):
-        """Get evaluation summary"""
         return {
             'total_evaluations': len(self.interactions),
             'average_metrics': {
@@ -437,24 +382,22 @@ class MetricsTracker:
 # GLOBAL INSTANCES
 # =============================================================================
 
-# Initialize components
 print("🔄 Initializing recipe system...")
 recipe_loader = RecipeDataLoader()
 recommender = SmartRecommender(recipe_loader)
 metrics_tracker = MetricsTracker()
-
-# Simple database simulation
 users_db = {}
 
 print(f"✅ Recipe system ready: {len(recipe_loader.recipes)} recipes loaded")
-
 # =============================================================================
 # ROUTES
 # =============================================================================
 
 @user_study_bp.route('/welcome')
 def welcome():
-    """Welcome page with system info"""
+    recipe_count = len(recipe_loader.recipes)
+    data_source = 'JSON betöltve' if recipe_loader.loaded else 'Minta adatok'
+    
     return f"""
     <!DOCTYPE html>
     <html>
@@ -480,7 +423,7 @@ def welcome():
             <div class="stats">
                 <h3>📊 Rendszer állapot:</h3>
                 <ul>
-                    <li>📋 <strong>{len(recipe_loader.recipes)} recept</strong> betöltve</li>
+                    <li>📋 <strong>{recipe_count} recept</strong> betöltve</li>
                     <li>🤖 <strong>Intelligens ajánló rendszer</strong> aktív</li>
                     <li>📈 <strong>Metrika dashboard</strong> elérhető</li>
                     <li>🧪 <strong>A/B/C teszt</strong> funkciók aktívak</li>
@@ -519,24 +462,21 @@ def welcome():
         </div>
         
         <p><small>🌍 A fenntartható táplálkozásért • GreenRec v3.0 • 
-        {len(recipe_loader.recipes)} recept • {'JSON betöltve' if recipe_loader.loaded else 'Minta adatok'}</small></p>
+        {recipe_count} recept • {data_source}</small></p>
     </body>
     </html>
     """
 
 @user_study_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    """User registration with A/B/C assignment"""
     if request.method == 'POST':
         email = request.form.get('email', '').strip()
         name = request.form.get('name', '').strip()
         
         if email and name:
-            # Generate user ID and assign version
             user_id = f"user_{len(users_db) + 1:03d}"
-            version = ['v1', 'v2', 'v3'][len(users_db) % 3]  # A/B/C rotation
+            version = ['v1', 'v2', 'v3'][len(users_db) % 3]
             
-            # Store user
             users_db[user_id] = {
                 'id': user_id,
                 'email': email,
@@ -545,14 +485,12 @@ def register():
                 'registered_at': datetime.now().isoformat()
             }
             
-            # Set session
             session['user_id'] = user_id
             session['email'] = email
             session['name'] = name
             session['version'] = version
             session['is_returning_user'] = False
             
-            # Track in metrics
             metrics_tracker.sessions[user_id] = {
                 'version': version,
                 'registered_at': datetime.now().isoformat()
@@ -600,10 +538,8 @@ def register():
     </body>
     </html>
     """
-
-@user_study_bp.route('/study')
+    @user_study_bp.route('/study')
 def study():
-    """Main study page with recommendations"""
     # Set default session if not exists
     if 'user_id' not in session:
         session['user_id'] = f"anonymous_{random.randint(1000, 9999)}"
@@ -628,9 +564,66 @@ def study():
         
     except Exception as e:
         print(f"❌ Recommendation error: {e}")
-        recommendations = recipe_loader.recipes[:6]  # fallback
+        recommendations = recipe_loader.recipes[:6]
     
-    return f"""
+    # Build HTML response
+    user_name = session.get('name', 'Névtelen')
+    recipe_count = len(recipe_loader.recipes)
+    results_count = len(recommendations)
+    version_name = {'v1': 'Fenntarthatóság-központú', 'v2': 'Kiegyensúlyozott', 'v3': 'Személyre szabott'}[version]
+    
+    search_info = f' | 🔍 Keresés: "{search_query}"' if search_query else ' | 📊 Személyre szabott ajánlások'
+    
+    # Generate recipe cards
+    recipe_cards_html = ''
+    for recipe in recommendations:
+        ingredient_tags = ''
+        for i, ing in enumerate(recipe['ingredients'][:8]):
+            ingredient_tags += f'<span class="ingredient-tag">{ing}</span>'
+        if len(recipe['ingredients']) > 8:
+            ingredient_tags += f'<span class="ingredient-tag">+{len(recipe["ingredients"])-8} további</span>'
+        
+        recipe_cards_html += f"""
+        <div class="recipe-card">
+            <div class="recipe-name">{recipe['name']}</div>
+            <div class="recipe-description">{recipe['description']}</div>
+            
+            <div class="recipe-meta">
+                <span>⏱️ {recipe.get('preparation_time', 30)} perc</span>
+                <span>👥 {recipe.get('servings', 4)} adag</span>
+                <span>📊 {recipe.get('difficulty', 'Közepes')}</span>
+                <span>🏷️ {recipe['category']}</span>
+            </div>
+            
+            <div class="scores">
+                <span class="score esi">🌍 ESI: {recipe['ESI']}</span>
+                <span class="score hsi">💚 HSI: {recipe['HSI']}</span>
+                <span class="score ppi">👥 PPI: {recipe['PPI']}</span>
+                <span class="score composite">⭐ Össz: {recipe['composite_score']}</span>
+            </div>
+            
+            <div class="ingredients">
+                <div class="ingredients-title">🥘 Összetevők:</div>
+                <div class="ingredient-tags">
+                    {ingredient_tags}
+                </div>
+            </div>
+            
+            <div class="rating">
+                <strong>⭐ Értékelés:</strong>
+                <div class="stars" onclick="rateRecipe('{recipe['id']}', event)">
+                    <span class="star" data-rating="1">⭐</span>
+                    <span class="star" data-rating="2">⭐</span>
+                    <span class="star" data-rating="3">⭐</span>
+                    <span class="star" data-rating="4">⭐</span>
+                    <span class="star" data-rating="5">⭐</span>
+                </div>
+                <div id="rating-{recipe['id']}" class="rating-feedback"></div>
+            </div>
+        </div>
+        """
+        # Complete HTML template
+    study_html = f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -676,9 +669,9 @@ def study():
         <div class="header">
             <h1>🌱 Fenntartható Receptajánló Rendszer</h1>
             <div class="user-info">
-                <p><strong>👤 Felhasználó:</strong> {session.get('name', 'Névtelen')} | 
+                <p><strong>👤 Felhasználó:</strong> {user_name} | 
                    <strong>🧪 Csoport:</strong> {version.upper()} | 
-                   <strong>📊 Receptek:</strong> {len(recipe_loader.recipes)} db betöltve</p>
+                   <strong>📊 Receptek:</strong> {recipe_count} db betöltve</p>
             </div>
         </div>
         
@@ -693,52 +686,12 @@ def study():
         </div>
         
         <div class="results-info">
-            <strong>📋 Találatok:</strong> {len(recommendations)} recept
-            {' | 🔍 Keresés: "' + search_query + '"' if search_query else ' | 📊 Személyre szabott ajánlások'}
-            <strong> | Algoritmus:</strong> {{'v1': 'Fenntarthatóság-központú', 'v2': 'Kiegyensúlyozott', 'v3': 'Személyre szabott'}[version]}
+            <strong>📋 Találatok:</strong> {results_count} recept{search_info}
+            <strong> | Algoritmus:</strong> {version_name}
         </div>
         
         <div class="recipe-grid">
-            {''.join([f'''
-            <div class="recipe-card">
-                <div class="recipe-name">{recipe['name']}</div>
-                <div class="recipe-description">{recipe['description']}</div>
-                
-                <div class="recipe-meta">
-                    <span>⏱️ {recipe.get('preparation_time', 30)} perc</span>
-                    <span>👥 {recipe.get('servings', 4)} adag</span>
-                    <span>📊 {recipe.get('difficulty', 'Közepes')}</span>
-                    <span>🏷️ {recipe['category']}</span>
-                </div>
-                
-                <div class="scores">
-                    <span class="score esi">🌍 ESI: {recipe['ESI']}</span>
-                    <span class="score hsi">💚 HSI: {recipe['HSI']}</span>
-                    <span class="score ppi">👥 PPI: {recipe['PPI']}</span>
-                    <span class="score composite">⭐ Össz: {recipe['composite_score']}</span>
-                </div>
-                
-                <div class="ingredients">
-                    <div class="ingredients-title">🥘 Összetevők:</div>
-                    <div class="ingredient-tags">
-                        {' '.join([f'<span class="ingredient-tag">{ing}</span>' for ing in recipe['ingredients'][:8]])}
-                        {f'<span class="ingredient-tag">+{len(recipe["ingredients"])-8} további</span>' if len(recipe['ingredients']) > 8 else ''}
-                    </div>
-                </div>
-                
-                <div class="rating">
-                    <strong>⭐ Értékelés:</strong>
-                    <div class="stars" onclick="rateRecipe('{recipe['id']}', event)">
-                        <span class="star" data-rating="1">⭐</span>
-                        <span class="star" data-rating="2">⭐</span>
-                        <span class="star" data-rating="3">⭐</span>
-                        <span class="star" data-rating="4">⭐</span>
-                        <span class="star" data-rating="5">⭐</span>
-                    </div>
-                    <div id="rating-{recipe['id']}" class="rating-feedback"></div>
-                </div>
-            </div>
-            ''' for recipe in recommendations])}
+            {recipe_cards_html}
         </div>
         
         <div class="navigation">
@@ -800,8 +753,9 @@ def study():
     </body>
     </html>
     """
-
-@user_study_bp.route('/api/rate', methods=['POST'])
+    
+    return study_html
+    @user_study_bp.route('/api/rate', methods=['POST'])
 def rate_recipe():
     """Rating endpoint with metrics tracking"""
     try:
@@ -833,15 +787,137 @@ def rate_recipe():
         print(f"❌ Rating error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@user_study_bp.route('/metrics')
+@user_study_bp.route('/login', methods=['GET', 'POST'])
+def login():
+    """Simple login by email"""
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        
+        # Find user by email
+        user = None
+        for user_data in users_db.values():
+            if user_data['email'] == email:
+                user = user_data
+                break
+                
+        if user:
+            session['user_id'] = user['id']
+            session['email'] = user['email']
+            session['name'] = user['name']
+            session['version'] = user['version']
+            session['is_returning_user'] = True
+            return redirect(url_for('user_study.study'))
+        else:
+            return """
+            <h2>❌ Felhasználó nem található</h2>
+            <p>A megadott email címmel nem található regisztráció.</p>
+            <a href="/register">📝 Új regisztráció</a> | 
+            <a href="/welcome">🏠 Főoldal</a>
+            """
+    
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Bejelentkezés - GreenRec</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
+            .form-group { margin: 15px 0; }
+            label { display: block; font-weight: bold; margin-bottom: 5px; }
+            input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
+            .btn { padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
+            .btn:hover { background: #0056b3; }
+        </style>
+    </head>
+    <body>
+        <h2>🔑 Bejelentkezés</h2>
+        <form method="POST">
+            <div class="form-group">
+                <label>📧 Email cím:</label>
+                <input type="email" name="email" required>
+            </div>
+            <button type="submit" class="btn">🚀 Bejelentkezés</button>
+        </form>
+        <p><a href="/welcome">← Vissza a főoldalra</a> | <a href="/register">📝 Új regisztráció</a></p>
+    </body>
+    </html>
+    """
+
+@user_study_bp.route('/logout')
+def logout():
+    """Logout and clear session"""
+    session.clear()
+    return redirect(url_for('user_study.welcome'))
+
+@user_study_bp.route('/api/dashboard-data')
+def api_dashboard_data():
+    """API endpoint for dashboard data"""
+    try:
+        data = metrics_tracker.get_dashboard_data()
+        return jsonify({
+            'status': 'success',
+            'data': data,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@user_study_bp.route('/api/summary-data')
+def api_summary_data():
+    """API endpoint for evaluation summary"""
+    try:
+        data = metrics_tracker.get_evaluation_summary()
+        return jsonify({
+            'status': 'success',
+            'data': data,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+@user_study_bp.route('/api/health')
+def api_health():
+    """Health check for user_study module"""
+    return jsonify({
+        'status': 'healthy',
+        'module': 'user_study',
+        'features': {
+            'recipes_loaded': len(recipe_loader.recipes),
+            'users_registered': len(users_db),
+            'total_ratings': sum(len(ratings) for ratings in recommender.user_ratings.values()),
+            'json_data_loaded': recipe_loader.loaded,
+            'metrics_tracking': True,
+            'a_b_c_testing': True
+        },
+        'endpoints': [
+            '/welcome', '/register', '/study', '/metrics', '/login',
+            '/api/rate', '/api/dashboard-data', '/api/summary-data'
+        ]
+    })
+    @user_study_bp.route('/metrics')
 def metrics_dashboard():
     """Metrics dashboard page"""
     try:
         # Get dashboard data
         dashboard_data = metrics_tracker.get_dashboard_data()
-        evaluation_summary = metrics_tracker.get_evaluation_summary()
         
-        return f"""
+        # Build dashboard HTML without f-strings
+        precision_value = dashboard_data['key_metrics']['Precision@5']['value']
+        precision_count = dashboard_data['key_metrics']['Precision@5']['count']
+        diversity_value = dashboard_data['key_metrics']['Recommendation Diversity']['value']
+        diversity_count = dashboard_data['key_metrics']['Recommendation Diversity']['count']
+        satisfaction_value = dashboard_data['key_metrics']['User Satisfaction']['value']
+        satisfaction_count = dashboard_data['key_metrics']['User Satisfaction']['count']
+        
+        current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        
+        dashboard_html = f"""
         <!DOCTYPE html>
         <html>
         <head>
@@ -875,7 +951,7 @@ def metrics_dashboard():
         <body>
             <div class="dashboard-header">
                 <h1>📈 GreenRec Metrika Dashboard</h1>
-                <p><span class="real-time-indicator"></span>Valós idejű monitorozás | Utolsó frissítés: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+                <p><span class="real-time-indicator"></span>Valós idejű monitorozás | Utolsó frissítés: {current_time}</p>
                 <p><strong>Rendszer állapot:</strong> {dashboard_data['system_status']} | <strong>Aktív felhasználók:</strong> {dashboard_data['total_users']} | <strong>Összesen értékelés:</strong> {dashboard_data['total_ratings']}</p>
             </div>
 
@@ -890,28 +966,28 @@ def metrics_dashboard():
             <div class="metrics-grid">
                 <div class="metric-card">
                     <div class="metric-label">🎯 Precision@5</div>
-                    <div class="metric-value">{dashboard_data['key_metrics']['Precision@5']['value']:.3f}</div>
-                    <div class="metric-description">{dashboard_data['key_metrics']['Precision@5']['count']} értékelés alapján</div>
+                    <div class="metric-value">{precision_value:.3f}</div>
+                    <div class="metric-description">{precision_count} értékelés alapján</div>
                     <div class="progress-bar">
-                        <div class="progress-fill" style="width: {dashboard_data['key_metrics']['Precision@5']['value'] * 100}%"></div>
+                        <div class="progress-fill" style="width: {precision_value * 100}%"></div>
                     </div>
                 </div>
 
                 <div class="metric-card">
                     <div class="metric-label">🌈 Ajánlás Diverzitás</div>
-                    <div class="metric-value">{dashboard_data['key_metrics']['Recommendation Diversity']['value']:.3f}</div>
-                    <div class="metric-description">{dashboard_data['key_metrics']['Recommendation Diversity']['count']} ajánlás alapján</div>
+                    <div class="metric-value">{diversity_value:.3f}</div>
+                    <div class="metric-description">{diversity_count} ajánlás alapján</div>
                     <div class="progress-bar">
-                        <div class="progress-fill" style="width: {dashboard_data['key_metrics']['Recommendation Diversity']['value'] * 100}%"></div>
+                        <div class="progress-fill" style="width: {diversity_value * 100}%"></div>
                     </div>
                 </div>
 
                 <div class="metric-card">
                     <div class="metric-label">😊 Felhasználói Elégedettség</div>
-                    <div class="metric-value">{dashboard_data['key_metrics']['User Satisfaction']['value']:.3f}</div>
+                    <div class="metric-value">{satisfaction_value:.3f}</div>
                     <div class="metric-description">Átlagos értékelés normalizálva</div>
                     <div class="progress-bar">
-                        <div class="progress-fill" style="width: {dashboard_data['key_metrics']['User Satisfaction']['value'] * 100}%"></div>
+                        <div class="progress-fill" style="width: {satisfaction_value * 100}%"></div>
                     </div>
                 </div>
 
@@ -977,6 +1053,8 @@ def metrics_dashboard():
         </html>
         """
         
+        return dashboard_html
+        
     except Exception as e:
         print(f"❌ Dashboard error: {e}")
         return jsonify({
@@ -984,187 +1062,182 @@ def metrics_dashboard():
             'details': str(e),
             'alternative': '/admin/stats'
         }), 500
-
-@user_study_bp.route('/admin/stats')
+        @user_study_bp.route('/admin/stats')
 def admin_stats():
-    """Admin statistics page"""
-    try:
-        # Get comprehensive stats
-        dashboard_data = metrics_tracker.get_dashboard_data()
-        
-        # User statistics
-        user_count = len(users_db)
-        version_distribution = {}
-        for user in users_db.values():
-            version = user.get('version', 'unknown')
-            version_distribution[version] = version_distribution.get(version, 0) + 1
-        
-        # Rating statistics  
-        total_ratings = sum(len(ratings) for ratings in recommender.user_ratings.values())
-        avg_rating = 0
-        if total_ratings > 0:
-            all_ratings = [rating for ratings in recommender.user_ratings.values() 
-                          for rating in ratings.values()]
-            avg_rating = sum(all_ratings) / len(all_ratings)
-        
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>👑 Admin Statisztikák - GreenRec</title>
-            <style>
-                body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
-                .admin-header {{ background: #343a40; color: white; padding: 25px; border-radius: 10px; margin-bottom: 25px; }}
-                .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }}
-                .stat-card {{ background: white; border: 1px solid #dee2e6; padding: 20px; border-radius: 10px; }}
-                .stat-number {{ font-size: 2em; font-weight: bold; color: #007bff; }}
-                .stat-label {{ color: #6c757d; margin-top: 5px; }}
-                .data-table {{ width: 100%; margin: 20px 0; border-collapse: collapse; }}
-                .data-table th, .data-table td {{ padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }}
-                .data-table th {{ background: #f8f9fa; font-weight: bold; }}
-                .export-section {{ background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }}
-                .export-btn {{ display: inline-block; padding: 10px 20px; margin: 5px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; }}
-                .export-btn:hover {{ background: #218838; }}
-            </style>
-        </head>
-        <body>
-            <div class="admin-header">
-                <h1>👑 GreenRec Admin Dashboard</h1>
-                <p>Részletes statisztikák és adatkezelés | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
-            </div>
-
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <div class="stat-number">{len(recipe_loader.recipes)}</div>
-                    <div class="stat-label">📋 Betöltött Receptek</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{user_count}</div>
-                    <div class="stat-label">👥 Regisztrált Felhasználók</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{total_ratings}</div>
-                    <div class="stat-label">⭐ Összes Értékelés</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-number">{avg_rating:.2f}</div>
-                    <div class="stat-label">📊 Átlagos Értékelés</div>
-                </div>
-            </div>
-
-            <h2>📊 Csoport Megoszlás</h2>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>Csoport</th>
-                        <th>Felhasználók Száma</th>
-                        <th>Százalék</th>
-                        <th>Algoritmus</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <tr>
-                        <td>🔴 A Csoport (v1)</td>
-                        <td>{version_distribution.get('v1', 0)}</td>
-                        <td>{(version_distribution.get('v1', 0) / max(user_count, 1) * 100):.1f}%</td>
-                        <td>Fenntarthatóság-központú</td>
-                    </tr>
-                    <tr>
-                        <td>🟡 B Csoport (v2)</td>
-                        <td>{version_distribution.get('v2', 0)}</td>
-                        <td>{(version_distribution.get('v2', 0) / max(user_count, 1) * 100):.1f}%</td>
-                        <td>Kiegyensúlyozott</td>
-                    </tr>
-                    <tr>
-                        <td>🟢 C Csoport (v3)</td>
-                        <td>{version_distribution.get('v3', 0)}</td>
-                        <td>{(version_distribution.get('v3', 0) / max(user_count, 1) * 100):.1f}%</td>
-                        <td>Személyre szabott</td>
-                    </tr>
-                </tbody>
-            </table>
-
-            <div class="export-section">
-                <h3>📁 Adatexport Lehetőségek</h3>
-                <a href="/admin/export/csv" class="export-btn">📊 CSV Export</a>
-                <a href="/admin/export/json" class="export-btn">🔗 JSON Export</a>
-                <a href="/admin/export/ratings" class="export-btn">⭐ Értékelések CSV</a>
-                <a href="/metrics" class="export-btn" style="background: #007bff;">📈 Metrika Dashboard</a>
-            </div>
-
-            <h2>👥 Felhasználói Adatok</h2>
-            <table class="data-table">
-                <thead>
-                    <tr>
-                        <th>User ID</th>
-                        <th>Név</th>
-                        <th>Email</th>
-                        <th>Csoport</th>
-                        <th>Regisztráció</th>
-                        <th>Értékelések</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {''.join([f'''
-                    <tr>
-                        <td>{user['id']}</td>
-                        <td>{user['name']}</td>
-                        <td>{user['email']}</td>
-                        <td>{user['version'].upper()}</td>
-                        <td>{user['registered_at'][:10]}</td>
-                        <td>{len(recommender.user_ratings.get(user['id'], {}))}</td>
-                    </tr>
-                    ''' for user in users_db.values()])}
-                </tbody>
-            </table>
-
-            <div style="margin: 30px 0; text-align: center;">
-                <a href="/welcome" class="export-btn" style="background: #6c757d;">🏠 Vissza a Főoldalra</a>
-                <a href="/study" class="export-btn" style="background: #6c757d;">🔬 Tanulmány Oldal</a>
-            </div>
-        </body>
-        </html>
+    """Simple admin stats page"""
+    user_count = len(users_db)
+    total_ratings = sum(len(ratings) for ratings in recommender.user_ratings.values())
+    recipe_count = len(recipe_loader.recipes)
+    
+    # Version distribution
+    version_distribution = {}
+    for user in users_db.values():
+        version = user.get('version', 'unknown')
+        version_distribution[version] = version_distribution.get(version, 0) + 1
+    
+    # Average rating
+    avg_rating = 0
+    if total_ratings > 0:
+        all_ratings = [rating for ratings in recommender.user_ratings.values() 
+                      for rating in ratings.values()]
+        avg_rating = sum(all_ratings) / len(all_ratings)
+    
+    # Build user table
+    user_rows_html = ''
+    for user in users_db.values():
+        user_rating_count = len(recommender.user_ratings.get(user['id'], {}))
+        user_rows_html += f"""
+        <tr>
+            <td>{user['id']}</td>
+            <td>{user['name']}</td>
+            <td>{user['email']}</td>
+            <td>{user['version'].upper()}</td>
+            <td>{user['registered_at'][:10]}</td>
+            <td>{user_rating_count}</td>
+        </tr>
         """
-        
-    except Exception as e:
-        print(f"❌ Admin stats error: {e}")
-        return jsonify({'error': str(e)}), 500
+    
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>👑 Admin Statisztikák - GreenRec</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
+            .admin-header {{ background: #343a40; color: white; padding: 25px; border-radius: 10px; margin-bottom: 25px; }}
+            .stats-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; }}
+            .stat-card {{ background: white; border: 1px solid #dee2e6; padding: 20px; border-radius: 10px; }}
+            .stat-number {{ font-size: 2em; font-weight: bold; color: #007bff; }}
+            .stat-label {{ color: #6c757d; margin-top: 5px; }}
+            .data-table {{ width: 100%; margin: 20px 0; border-collapse: collapse; }}
+            .data-table th, .data-table td {{ padding: 12px; text-align: left; border-bottom: 1px solid #dee2e6; }}
+            .data-table th {{ background: #f8f9fa; font-weight: bold; }}
+            .export-section {{ background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0; }}
+            .export-btn {{ display: inline-block; padding: 10px 20px; margin: 5px; background: #28a745; color: white; text-decoration: none; border-radius: 5px; }}
+            .export-btn:hover {{ background: #218838; }}
+        </style>
+    </head>
+    <body>
+        <div class="admin-header">
+            <h1>👑 GreenRec Admin Dashboard</h1>
+            <p>Részletes statisztikák és adatkezelés | {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</p>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{recipe_count}</div>
+                <div class="stat-label">📋 Betöltött Receptek</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{user_count}</div>
+                <div class="stat-label">👥 Regisztrált Felhasználók</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{total_ratings}</div>
+                <div class="stat-label">⭐ Összes Értékelés</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{avg_rating:.2f}</div>
+                <div class="stat-label">📊 Átlagos Értékelés</div>
+            </div>
+        </div>
+
+        <h2>📊 Csoport Megoszlás</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>Csoport</th>
+                    <th>Felhasználók Száma</th>
+                    <th>Százalék</th>
+                    <th>Algoritmus</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>🔴 A Csoport (v1)</td>
+                    <td>{version_distribution.get('v1', 0)}</td>
+                    <td>{(version_distribution.get('v1', 0) / max(user_count, 1) * 100):.1f}%</td>
+                    <td>Fenntarthatóság-központú</td>
+                </tr>
+                <tr>
+                    <td>🟡 B Csoport (v2)</td>
+                    <td>{version_distribution.get('v2', 0)}</td>
+                    <td>{(version_distribution.get('v2', 0) / max(user_count, 1) * 100):.1f}%</td>
+                    <td>Kiegyensúlyozott</td>
+                </tr>
+                <tr>
+                    <td>🟢 C Csoport (v3)</td>
+                    <td>{version_distribution.get('v3', 0)}</td>
+                    <td>{(version_distribution.get('v3', 0) / max(user_count, 1) * 100):.1f}%</td>
+                    <td>Személyre szabott</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="export-section">
+            <h3>📁 Adatexport Lehetőségek</h3>
+            <a href="/admin/export/csv" class="export-btn">📊 CSV Export</a>
+            <a href="/admin/export/json" class="export-btn">🔗 JSON Export</a>
+            <a href="/admin/export/ratings" class="export-btn">⭐ Értékelések CSV</a>
+            <a href="/metrics" class="export-btn" style="background: #007bff;">📈 Metrika Dashboard</a>
+        </div>
+
+        <h2>👥 Felhasználói Adatok</h2>
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>User ID</th>
+                    <th>Név</th>
+                    <th>Email</th>
+                    <th>Csoport</th>
+                    <th>Regisztráció</th>
+                    <th>Értékelések</th>
+                </tr>
+            </thead>
+            <tbody>
+                {user_rows_html}
+            </tbody>
+        </table>
+
+        <div style="margin: 30px 0; text-align: center;">
+            <a href="/welcome" class="export-btn" style="background: #6c757d;">🏠 Vissza a Főoldalra</a>
+            <a href="/study" class="export-btn" style="background: #6c757d;">🔬 Tanulmány Oldal</a>
+        </div>
+    </body>
+    </html>
+    """
 
 @user_study_bp.route('/admin/export/csv')
 def export_csv():
-    """Export user data as CSV"""
-    try:
-        output = io.StringIO()
-        writer = csv.writer(output)
+    """Simple CSV export"""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow(['User ID', 'Name', 'Email', 'Version', 'Registration Date', 'Total Ratings', 'Average Rating'])
+    
+    # Data rows
+    for user in users_db.values():
+        user_ratings = recommender.user_ratings.get(user['id'], {})
+        total_ratings = len(user_ratings)
+        avg_rating = sum(user_ratings.values()) / max(total_ratings, 1) if total_ratings > 0 else 0
         
-        # Header
-        writer.writerow(['User ID', 'Name', 'Email', 'Version', 'Registration Date', 'Total Ratings', 'Average Rating'])
-        
-        # Data rows
-        for user in users_db.values():
-            user_ratings = recommender.user_ratings.get(user['id'], {})
-            total_ratings = len(user_ratings)
-            avg_rating = sum(user_ratings.values()) / max(total_ratings, 1) if total_ratings > 0 else 0
-            
-            writer.writerow([
-                user['id'],
-                user['name'],
-                user['email'],
-                user['version'],
-                user['registered_at'][:10],
-                total_ratings,
-                f"{avg_rating:.2f}"
-            ])
-        
-        # Create response
-        response = make_response(output.getvalue())
-        response.headers['Content-Type'] = 'text/csv'
-        response.headers['Content-Disposition'] = f'attachment; filename=greenrec_users_{datetime.now().strftime("%Y%m%d")}.csv'
-        
-        return response
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        writer.writerow([
+            user['id'],
+            user['name'],
+            user['email'],
+            user['version'],
+            user['registered_at'][:10],
+            total_ratings,
+            f"{avg_rating:.2f}"
+        ])
+    
+    # Create response
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv'
+    response.headers['Content-Disposition'] = f'attachment; filename=greenrec_users_{datetime.now().strftime("%Y%m%d")}.csv'
+    
+    return response
 
 @user_study_bp.route('/admin/export/json')
 def export_json():
@@ -1229,168 +1302,7 @@ def export_ratings():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-# API Endpoints for metrics
-@user_study_bp.route('/api/dashboard-data')
-def api_dashboard_data():
-    """API endpoint for dashboard data"""
-    try:
-        data = metrics_tracker.get_dashboard_data()
-        return jsonify({
-            'status': 'success',
-            'data': data,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
-@user_study_bp.route('/api/summary-data')
-def api_summary_data():
-    """API endpoint for evaluation summary"""
-    try:
-        data = metrics_tracker.get_evaluation_summary()
-        return jsonify({
-            'status': 'success',
-            'data': data,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
-@user_study_bp.route('/api/recipes')
-def api_recipes():
-    """API endpoint for recipe data"""
-    try:
-        return jsonify({
-            'status': 'success',
-            'data': {
-                'recipes': recipe_loader.recipes,
-                'total_count': len(recipe_loader.recipes),
-                'source': 'JSON file' if recipe_loader.loaded else 'Sample data',
-                'categories': list(set(r['category'] for r in recipe_loader.recipes))
-            }
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
-
-@user_study_bp.route('/api/health')
-def api_health():
-    """Health check for user_study module"""
-    return jsonify({
-        'status': 'healthy',
-        'module': 'user_study',
-        'features': {
-            'recipes_loaded': len(recipe_loader.recipes),
-            'users_registered': len(users_db),
-            'total_ratings': sum(len(ratings) for ratings in recommender.user_ratings.values()),
-            'json_data_loaded': recipe_loader.loaded,
-            'metrics_tracking': True,
-            'a_b_c_testing': True
-        },
-        'endpoints': [
-            '/welcome', '/register', '/study', '/metrics', '/admin/stats',
-            '/api/rate', '/api/dashboard-data', '/api/summary-data', '/api/recipes'
-        ]
-    })
-
-# Login route (simplified)
-@user_study_bp.route('/login', methods=['GET', 'POST'])
-def login():
-    """Simple login by email"""
-    if request.method == 'POST':
-        email = request.form.get('email', '').strip()
-        
-        # Find user by email
-        user = None
-        for user_data in users_db.values():
-            if user_data['email'] == email:
-                user = user_data
-                break
-                
-        if user:
-            session['user_id'] = user['id']
-            session['email'] = user['email']
-            session['name'] = user['name']
-            session['version'] = user['version']
-            session['is_returning_user'] = True
-            return redirect(url_for('user_study.study'))
-        else:
-            return """
-            <h2>❌ Felhasználó nem található</h2>
-            <p>A megadott email címmel nem található regisztráció.</p>
-            <a href="/register">📝 Új regisztráció</a> | 
-            <a href="/welcome">🏠 Főoldal</a>
-            """
-    
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Bejelentkezés - GreenRec</title>
-        <style>
-            body { font-family: Arial, sans-serif; max-width: 600px; margin: 50px auto; padding: 20px; }
-            .form-group { margin: 15px 0; }
-            label { display: block; font-weight: bold; margin-bottom: 5px; }
-            input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 5px; box-sizing: border-box; }
-            .btn { padding: 12px 24px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; }
-            .btn:hover { background: #0056b3; }
-        </style>
-    </head>
-    <body>
-        <h2>🔑 Bejelentkezés</h2>
-        <form method="POST">
-            <div class="form-group">
-                <label>📧 Email cím:</label>
-                <input type="email" name="email" required>
-            </div>
-            <button type="submit" class="btn">🚀 Bejelentkezés</button>
-        </form>
-        <p><a href="/welcome">← Vissza a főoldalra</a> | <a href="/register">📝 Új regisztráció</a></p>
-    </body>
-    </html>
-    """
-
-@user_study_bp.route('/logout')
-def logout():
-    """Logout and clear session"""
-    session.clear()
-    return redirect(url_for('user_study.welcome'))
-
-# Debug routes
-@user_study_bp.route('/debug/data-status')
-def debug_data_status():
-    """Debug information about data loading"""
-    return jsonify({
-        'recipe_loader': {
-            'loaded': recipe_loader.loaded,
-            'recipe_count': len(recipe_loader.recipes),
-            'sample_recipe': recipe_loader.recipes[0] if recipe_loader.recipes else None
-        },
-        'users': {
-            'total': len(users_db),
-            'versions': {v: sum(1 for u in users_db.values() if u.get('version') == v) 
-                        for v in ['v1', 'v2', 'v3']}
-        },
-        'ratings': {
-            'total_users_with_ratings': len(recommender.user_ratings),
-            'total_ratings': sum(len(ratings) for ratings in recommender.user_ratings.values())
-        },
-        'metrics': {
-            'tracked_interactions': len(metrics_tracker.interactions),
-            'tracked_recommendations': len(metrics_tracker.recommendations)
-        }
-    })
-
-print("✅ User study routes loaded successfully (COMPLETE VERSION with JSON loading and metrics)")
+        print("✅ User study routes loaded successfully (COMPLETE FIXED VERSION)")
 
 # Export for main app
 __all__ = ['user_study_bp']
