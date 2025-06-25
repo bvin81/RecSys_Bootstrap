@@ -1,7 +1,7 @@
-# app.py - GreenRec Logging Fix Version
+# app.py - GreenRec Initialization Fix
 """
 GreenRec - Fenntartható Receptajánló Rendszer
-LOGGING FIX verzió - print helyett logging használat
+INITIALIZATION FIX - load_recipes() automatikus hívás
 """
 import os
 import logging
@@ -28,13 +28,13 @@ recipes_df = None
 tfidf_matrix = None
 vectorizer = None
 behavior_data = []
-load_debug_messages = []  # Debug üzenetek tárolása
+load_debug_messages = []
 
 def debug_log(message):
     """Debug üzenet logging és tárolás"""
     logger.info(message)
     load_debug_messages.append(f"{datetime.now().strftime('%H:%M:%S')} - {message}")
-    print(message)  # Fallback
+    print(message)
 
 def create_fallback_data():
     """Minta adatok létrehozása ha nincs JSON"""
@@ -97,94 +97,78 @@ def create_fallback_data():
     ]
 
 def load_recipes():
-    """JSON receptek betöltése - LOGGING verzióval"""
+    """JSON receptek betöltése - INITIALIZATION verzióval"""
     global recipes_df, tfidf_matrix, vectorizer
     
-    debug_log("🔍 DEBUG: load_recipes() indítása...")
+    debug_log("🚀 INIT: load_recipes() automatikus indítás...")
     
     try:
         # Working directory ellenőrzése
         current_dir = os.getcwd()
-        debug_log(f"📁 DEBUG: Current working directory: {current_dir}")
-        
-        # Fájlok listázása
-        files_in_dir = os.listdir(current_dir)
-        debug_log(f"📋 DEBUG: Fájlok a working directory-ban: {files_in_dir}")
+        debug_log(f"📁 INIT: Working directory: {current_dir}")
         
         # JSON fájl keresése
         json_file_path = os.path.join(current_dir, 'greenrec_dataset.json')
-        debug_log(f"🔍 DEBUG: JSON fájl keresése: {json_file_path}")
+        debug_log(f"🔍 INIT: JSON fájl elérési út: {json_file_path}")
         
         if os.path.exists(json_file_path):
-            debug_log("✅ DEBUG: greenrec_dataset.json megtalálva!")
+            debug_log("✅ INIT: greenrec_dataset.json MEGTALÁLVA!")
             
             # Fájl méret ellenőrzése
             file_size = os.path.getsize(json_file_path)
-            debug_log(f"📄 DEBUG: Fájl mérete: {file_size} byte")
+            debug_log(f"📄 INIT: JSON fájl mérete: {file_size} byte")
             
             if file_size == 0:
-                debug_log("❌ DEBUG: A JSON fájl üres!")
+                debug_log("❌ INIT: JSON fájl üres!")
                 raise ValueError("Üres JSON fájl")
             
-            # JSON tartalom olvasása
-            with open(json_file_path, 'r', encoding='utf-8') as f:
-                json_content = f.read()
-                debug_log(f"📄 DEBUG: Beolvasott tartalom hossza: {len(json_content)} karakter")
-                debug_log(f"📄 DEBUG: Első 200 karakter: {json_content[:200]}...")
-            
-            # JSON parsing
+            # JSON olvasás
+            debug_log("📖 INIT: JSON fájl beolvasása...")
             with open(json_file_path, 'r', encoding='utf-8') as f:
                 json_data = json.load(f)
-                debug_log(f"✅ DEBUG: JSON parse sikeres: {type(json_data)}")
+                debug_log(f"✅ INIT: JSON parse sikeres: {type(json_data)}")
                 
                 if isinstance(json_data, list):
-                    debug_log(f"📊 DEBUG: JSON array {len(json_data)} elemmel")
                     recipes = json_data
+                    debug_log(f"📊 INIT: JSON array {len(recipes)} recepttel")
                 elif isinstance(json_data, dict):
-                    debug_log("📊 DEBUG: JSON object formátum")
-                    recipes = [json_data]  # Single recipe
+                    recipes = [json_data]
+                    debug_log("📊 INIT: Egyetlen recept object")
                 else:
-                    raise ValueError(f"Váratlan JSON struktúra: {type(json_data)}")
+                    raise ValueError(f"Ismeretlen JSON struktúra: {type(json_data)}")
         else:
-            debug_log("❌ DEBUG: greenrec_dataset.json nem található!")
-            debug_log("🔄 DEBUG: Fallback adatok használata...")
+            debug_log("❌ INIT: JSON fájl nem található!")
+            debug_log("🔄 INIT: Fallback adatok használata...")
             recipes = create_fallback_data()
         
-        debug_log(f"📊 DEBUG: Feldolgozandó receptek száma: {len(recipes)}")
+        debug_log(f"📊 INIT: Receptek száma: {len(recipes)}")
         
         if len(recipes) == 0:
-            debug_log("❌ DEBUG: Nincsenek receptek!")
-            raise ValueError("Üres recipe lista")
+            debug_log("❌ INIT: Üres recipe lista!")
+            raise ValueError("Nincsenek receptek")
         
         # DataFrame létrehozása
-        debug_log("🔄 DEBUG: DataFrame létrehozása...")
+        debug_log("🔄 INIT: DataFrame építése...")
         recipes_df = pd.DataFrame(recipes)
-        debug_log(f"📊 DEBUG: DataFrame shape: {recipes_df.shape}")
-        debug_log(f"📊 DEBUG: DataFrame oszlopok: {list(recipes_df.columns)}")
+        debug_log(f"📊 INIT: DataFrame shape: {recipes_df.shape}")
         
         # Oszlopok normalizálása
-        debug_log("🔄 DEBUG: Oszlopok normalizálása...")
+        debug_log("🔄 INIT: Oszlopok normalizálása...")
         recipes_df['id'] = recipes_df.get('recipeid', range(len(recipes_df)))
         recipes_df['name'] = recipes_df.get('title', 'Névtelen recept')
         recipes_df['ingredients_text'] = recipes_df.get('ingredients', '')
         recipes_df['instructions'] = recipes_df.get('instructions', '')
-        
-        # Numerikus oszlopok
-        debug_log("🔄 DEBUG: Numerikus oszlopok konvertálása...")
         recipes_df['esi'] = pd.to_numeric(recipes_df.get('ESI', 0), errors='coerce').fillna(0)
         recipes_df['hsi'] = pd.to_numeric(recipes_df.get('HSI', 0), errors='coerce').fillna(0)
         recipes_df['ppi'] = pd.to_numeric(recipes_df.get('PPI', 0), errors='coerce').fillna(0)
-        
         recipes_df['category'] = recipes_df.get('category', 'Egyéb')
         recipes_df['image'] = recipes_df.get('images', '')
         
-        debug_log(f"📋 DEBUG: Végleges oszlopok: {list(recipes_df.columns)}")
-        debug_log(f"📝 DEBUG: Első recept: {recipes_df.iloc[0]['name']}")
-        debug_log(f"📊 DEBUG: ESI tartomány: {recipes_df['esi'].min()}-{recipes_df['esi'].max()}")
-        debug_log(f"📊 DEBUG: HSI tartomány: {recipes_df['hsi'].min()}-{recipes_df['hsi'].max()}")
+        debug_log(f"📋 INIT: Oszlopok: {list(recipes_df.columns)}")
+        debug_log(f"📝 INIT: Első recept: {recipes_df.iloc[0]['name']}")
         
-        # TF-IDF matrix létrehozása
-        debug_log("🤖 DEBUG: TF-IDF mátrix építése...")
+        # TF-IDF matrix
+        debug_log("🤖 INIT: TF-IDF mátrix építése...")
         vectorizer = TfidfVectorizer(
             max_features=1000, 
             stop_words=None,
@@ -193,31 +177,26 @@ def load_recipes():
         )
         
         ingredients_texts = recipes_df['ingredients_text'].fillna('')
-        debug_log(f"📝 DEBUG: TF-IDF input példa: {ingredients_texts.iloc[0][:100]}...")
-        
         tfidf_matrix = vectorizer.fit_transform(ingredients_texts)
-        debug_log(f"🤖 DEBUG: TF-IDF mátrix kész: {tfidf_matrix.shape}")
-        debug_log(f"🤖 DEBUG: Vocabulary size: {len(vectorizer.vocabulary_)}")
+        debug_log(f"🤖 INIT: TF-IDF kész: {tfidf_matrix.shape}")
         
-        debug_log("✅ DEBUG: load_recipes() SIKERES!")
-        debug_log(f"✅ DEBUG: Végleges receptek száma: {len(recipes_df)}")
+        debug_log("✅ INIT: load_recipes() SIKERES BEFEJEZÉS!")
+        debug_log(f"✅ INIT: Végleges állapot: {len(recipes_df)} recept, TF-IDF mátrix kész")
         return True
         
     except Exception as e:
-        debug_log(f"❌ DEBUG: KRITIKUS HIBA: {str(e)}")
-        debug_log(f"❌ DEBUG: Exception type: {type(e).__name__}")
+        debug_log(f"❌ INIT: KRITIKUS HIBA: {str(e)}")
         
         import traceback
         traceback_str = traceback.format_exc()
-        debug_log(f"🔍 DEBUG: Traceback: {traceback_str}")
+        debug_log(f"🔍 INIT: Traceback: {traceback_str}")
         
-        # Utolsó próbálkozás: fallback adatok
-        debug_log("🔄 DEBUG: Utolsó próba - tiszta fallback...")
+        # Fallback
+        debug_log("🔄 INIT: Fallback minta adatok...")
         try:
             fallback_recipes = create_fallback_data()
             recipes_df = pd.DataFrame(fallback_recipes)
             
-            # Gyors normalizálás
             recipes_df['id'] = recipes_df['recipeid']
             recipes_df['name'] = recipes_df['title']
             recipes_df['ingredients_text'] = recipes_df['ingredients']
@@ -228,15 +207,14 @@ def load_recipes():
             recipes_df['category'] = recipes_df['category']
             recipes_df['image'] = recipes_df['images']
             
-            # TF-IDF
             vectorizer = TfidfVectorizer(max_features=100, stop_words=None, lowercase=True, token_pattern=r'\b\w+\b')
             tfidf_matrix = vectorizer.fit_transform(recipes_df['ingredients_text'])
             
-            debug_log("✅ DEBUG: Fallback sikeres!")
+            debug_log("✅ INIT: Fallback sikeres!")
             return True
             
         except Exception as fallback_error:
-            debug_log(f"❌ DEBUG: Fallback is hibás: {str(fallback_error)}")
+            debug_log(f"❌ INIT: Fallback is hibás: {str(fallback_error)}")
             return False
 
 def get_user_group(user_id):
@@ -261,18 +239,18 @@ def log_behavior(user_id, action, data=None):
             behavior_data[:5000] = []
             
     except Exception as e:
-        debug_log(f"❌ DEBUG: Behavior logging hiba: {e}")
+        debug_log(f"❌ Behavior logging hiba: {e}")
 
 def get_recommendations(recipe_id, n=5):
     """Content-based ajánlások hibrid algoritmussal"""
     try:
         if recipes_df is None or tfidf_matrix is None:
-            debug_log("❌ DEBUG: Hiányzó adatok az ajánlásokhoz")
+            debug_log("❌ Hiányzó adatok az ajánlásokhoz")
             return []
         
         recipe_idx = recipes_df[recipes_df['id'] == recipe_id].index
         if len(recipe_idx) == 0:
-            debug_log(f"❌ DEBUG: Nem található recept ID: {recipe_id}")
+            debug_log(f"❌ Nem található recept ID: {recipe_id}")
             return []
         
         recipe_idx = recipe_idx[0]
@@ -310,7 +288,7 @@ def get_recommendations(recipe_id, n=5):
         return recommendations
         
     except Exception as e:
-        debug_log(f"❌ DEBUG: Ajánlás hiba: {e}")
+        debug_log(f"❌ Ajánlás hiba: {e}")
         return []
 
 def generate_explanation(recipe, similarity_score):
@@ -338,7 +316,7 @@ def generate_explanation(recipe, similarity_score):
             explanations.append("🥗 Vegetáriánus-barát választás")
         
     except Exception as e:
-        debug_log(f"❌ DEBUG: Magyarázat hiba: {e}")
+        debug_log(f"❌ Magyarázat hiba: {e}")
     
     return explanations
 
@@ -491,92 +469,7 @@ def index():
         
         return render_template_string(TEMPLATE_BASE, group=group, recipes=None, title="Kezdőlap")
     except Exception as e:
-        debug_log(f"❌ DEBUG: Index hiba: {e}")
-        return f"<h3>❌ Hiba: {e}</h3><a href='/status'>Status</a>"
-
-@app.route('/search', methods=['POST'])
-def search():
-    try:
-        user_id = session.get('user_id')
-        query = request.form.get('query', '').strip()
-        
-        debug_log(f"🔍 DEBUG: Keresés: '{query}'")
-        
-        if not query:
-            return redirect('/')
-        
-        log_behavior(user_id, 'search', {'query': query})
-        
-        if recipes_df is None:
-            debug_log("❌ DEBUG: recipes_df is None a keresésben!")
-            return "❌ Adatok nem elérhetők. <a href='/debug'>Debug info</a>"
-        
-        # Keresés
-        mask = recipes_df['ingredients_text'].str.contains(query, case=False, na=False, regex=False)
-        found_recipes = recipes_df[mask].head(12)
-        
-        debug_log(f"📋 DEBUG: {len(found_recipes)} találat")
-        
-        group = get_user_group(user_id)
-        results = []
-        
-        for _, recipe in found_recipes.iterrows():
-            recipe_data = {
-                'id': int(recipe['id']),
-                'name': str(recipe['name']),
-                'category': str(recipe['category']),
-                'ingredients': str(recipe['ingredients_text']),
-                'image': str(recipe['image']),
-                'esi': float(recipe['esi']),
-                'hsi': float(recipe['hsi']),
-                'ppi': float(recipe['ppi'])
-            }
-            
-            # C csoport: magyarázatok hozzáadása
-            if group == 'explanations':
-                recipe_data['explanations'] = [
-                    f"🔍 Találat: '{query}' az összetevők között",
-                    f"📂 Kategória: {recipe['category']}",
-                    "🌱 Fenntartható választás a GreenRec alapján"
-                ]
-            
-            results.append(recipe_data)
-        
-        return render_template_string(TEMPLATE_BASE,
-                                    group=group,
-                                    recipes=results,
-                                    query=query,
-                                    title=f"Keresési eredmények: '{query}'")
-                                    
-    except Exception as e:
-        debug_log(f"❌ DEBUG: Keresési hiba: {e}")
-        return f"<h3>❌ Keresési hiba: {e}</h3><a href='/'>Vissza</a>"
-
-@app.route('/recommend/<int:recipe_id>')
-def recommend(recipe_id):
-    try:
-        user_id = session.get('user_id')
-        log_behavior(user_id, 'get_recommendations', {'recipe_id': recipe_id})
-        
-        recommendations = get_recommendations(recipe_id, n=6)
-        group = get_user_group(user_id)
-        
-        # C csoport: magyarázatok hozzáadása
-        if group == 'explanations':
-            for rec in recommendations:
-                rec['explanations'] = generate_explanation(rec, rec['similarity'])
-        
-        # Eredeti recept információi
-        original_recipe = recipes_df[recipes_df['id'] == recipe_id]
-        original_name = original_recipe['name'].iloc[0] if len(original_recipe) > 0 else f"Recept #{recipe_id}"
-        
-        return render_template_string(TEMPLATE_BASE,
-                                    group=group,
-                                    recipes=recommendations,
-                                    title=f"Ajánlások a(z) '{original_name}' alapján")
-                                    
-    except Exception as e:
-        debug_log(f"❌ DEBUG: Ajánlási hiba: {e}")
+        debug_log(f"❌ Index hiba: {e}")
         return f"<h3>❌ Ajánlási hiba: {e}</h3><a href='/'>Vissza</a>"
 
 @app.route('/random')
@@ -678,7 +571,7 @@ def export_data():
             'behaviors': behavior_data[-1000:],
             'metadata': {
                 'recipes_count': len(recipes_df) if recipes_df is not None else 0,
-                'app_version': '1.0.0-heroku-logging',
+                'app_version': '1.0.0-heroku-init-fix',
                 'deployment': 'heroku'
             }
         }
@@ -693,7 +586,7 @@ def debug():
     """Debug információk megjelenítése"""
     try:
         debug_info = {
-            'load_debug_messages': load_debug_messages[-50:],  # Utolsó 50 üzenet
+            'load_debug_messages': load_debug_messages[-50:],
             'recipes_loaded': recipes_df is not None,
             'recipes_count': len(recipes_df) if recipes_df is not None else 0,
             'tfidf_ready': tfidf_matrix is not None,
@@ -768,7 +661,7 @@ def status():
             'viselkedesi_adatok': len(behavior_data),
             'algoritmus_kesz': tfidf_matrix is not None,
             'utolso_frissites': datetime.now().isoformat(),
-            'deployment': 'heroku-logging',
+            'deployment': 'heroku-init-fix',
             'python_version': os.sys.version,
             'flask_version': '2.3.3',
             'debug_messages_count': len(load_debug_messages),
@@ -813,22 +706,116 @@ def internal_error(error):
     </div>
     """, 500
 
+# ✅ KRITIKUS: Automatikus inicializálás app indításkor!
+debug_log("🚀 STARTUP: Flask app inicializálása...")
+debug_log("🔄 STARTUP: load_recipes() automatikus hívás...")
+initialization_success = load_recipes()
+debug_log(f"📊 STARTUP: Inicializálás eredménye: {initialization_success}")
+debug_log(f"📊 STARTUP: recipes_df állapot: {recipes_df is not None}")
+debug_log(f"📊 STARTUP: tfidf_matrix állapot: {tfidf_matrix is not None}")
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
     
-    debug_log("🚀 GreenRec LOGGING verzió indítása...")
-    debug_log(f"🌐 Port: {port}")
-    debug_log(f"🔧 Debug mód: {debug}")
+    debug_log("🚀 MAIN: Alkalmazás indítása...")
+    debug_log(f"🌐 MAIN: Port: {port}")
+    debug_log(f"🔧 MAIN: Debug mód: {debug}")
     
-    # Receptek betöltése
-    load_success = load_recipes()
-    if load_success:
-        debug_log("✅ Alkalmazás kész!")
-        debug_log("🌐 Heroku URL-en elérhető")
+    # Ellenőrzés
+    if recipes_df is not None:
+        debug_log("✅ MAIN: Receptek sikeresen betöltve!")
+        debug_log("🌐 MAIN: Alkalmazás kész!")
     else:
-        debug_log("⚠️ Receptek betöltése sikertelen!")
+        debug_log("⚠️ MAIN: Receptek betöltése sikertelen!")
     
-    debug_log(f"📊 Végleges állapot: recipes_df={recipes_df is not None}, tfidf_matrix={tfidf_matrix is not None}")
-    
-    app.run(debug=debug, host='0.0.0.0', port=port)
+    app.run(debug=debug, host='0.0.0.0', port=port) Hiba: {e}</h3><a href='/status'>Status</a>"
+
+@app.route('/search', methods=['POST'])
+def search():
+    try:
+        user_id = session.get('user_id')
+        query = request.form.get('query', '').strip()
+        
+        debug_log(f"🔍 DEBUG: Keresés: '{query}' - recipes_df status: {recipes_df is not None}")
+        
+        if not query:
+            return redirect('/')
+        
+        log_behavior(user_id, 'search', {'query': query})
+        
+        if recipes_df is None:
+            debug_log("❌ DEBUG: recipes_df is None! Próbálom újratölteni...")
+            # Kényszerű újratöltés
+            load_recipes()
+            if recipes_df is None:
+                debug_log("❌ DEBUG: Újratöltés is sikertelen!")
+                return "❌ Adatok nem elérhetők. <a href='/debug'>Debug info</a>"
+        
+        # Keresés
+        mask = recipes_df['ingredients_text'].str.contains(query, case=False, na=False, regex=False)
+        found_recipes = recipes_df[mask].head(12)
+        
+        debug_log(f"📋 DEBUG: {len(found_recipes)} találat")
+        
+        group = get_user_group(user_id)
+        results = []
+        
+        for _, recipe in found_recipes.iterrows():
+            recipe_data = {
+                'id': int(recipe['id']),
+                'name': str(recipe['name']),
+                'category': str(recipe['category']),
+                'ingredients': str(recipe['ingredients_text']),
+                'image': str(recipe['image']),
+                'esi': float(recipe['esi']),
+                'hsi': float(recipe['hsi']),
+                'ppi': float(recipe['ppi'])
+            }
+            
+            # C csoport: magyarázatok hozzáadása
+            if group == 'explanations':
+                recipe_data['explanations'] = [
+                    f"🔍 Találat: '{query}' az összetevők között",
+                    f"📂 Kategória: {recipe['category']}",
+                    "🌱 Fenntartható választás a GreenRec alapján"
+                ]
+            
+            results.append(recipe_data)
+        
+        return render_template_string(TEMPLATE_BASE,
+                                    group=group,
+                                    recipes=results,
+                                    query=query,
+                                    title=f"Keresési eredmények: '{query}'")
+                                    
+    except Exception as e:
+        debug_log(f"❌ DEBUG: Keresési hiba: {e}")
+        return f"<h3>❌ Keresési hiba: {e}</h3><a href='/'>Vissza</a>"
+
+@app.route('/recommend/<int:recipe_id>')
+def recommend(recipe_id):
+    try:
+        user_id = session.get('user_id')
+        log_behavior(user_id, 'get_recommendations', {'recipe_id': recipe_id})
+        
+        recommendations = get_recommendations(recipe_id, n=6)
+        group = get_user_group(user_id)
+        
+        # C csoport: magyarázatok hozzáadása
+        if group == 'explanations':
+            for rec in recommendations:
+                rec['explanations'] = generate_explanation(rec, rec['similarity'])
+        
+        # Eredeti recept információi
+        original_recipe = recipes_df[recipes_df['id'] == recipe_id]
+        original_name = original_recipe['name'].iloc[0] if len(original_recipe) > 0 else f"Recept #{recipe_id}"
+        
+        return render_template_string(TEMPLATE_BASE,
+                                    group=group,
+                                    recipes=recommendations,
+                                    title=f"Ajánlások a(z) '{original_name}' alapján")
+                                    
+    except Exception as e:
+        debug_log(f"❌ DEBUG: Ajánlási hiba: {e}")
+        return f"<h3>❌
