@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}GreenRec - Analitika{% endblock %}
+
+{% block page_title %}Analitika Dashboard{% endblock %}
+
+{% block content %}
+<div class="analytics-dashboard">
+    <!-- Key Metrics -->
+    <div class="metrics-grid mb-4">
+        <div class="metric-card">
+            <h3><span class="icon">📊</span> F1-Score</h3>
+            <div class="metric-value" id="f1-score">-</div>
+            <div class="metric-description">Ajánlási pontosság</div>
+        </div>
+        
+        <div class="metric-card">
+            <h3><span class="icon">🌈</span> Diverzitás</h3>
+            <div class="metric-value" id="diversity-score">-</div>
+            <div class="metric-description">Ajánlások változatossága</div>
+        </div>
+        
+        <div class="metric-card">
+            <h3><span class="icon">⭐</span> Elégedettség</h3>
+            <div class="metric-value" id="satisfaction-score">-</div>
+            <div class="metric-description">Átlagos értékelés</div>
+        </div>
+        
+        <div class="metric-card">
+            <h3><span class="icon">🌱</span> Fenntarthatóság</h3>
+            <div class="metric-value" id="sustainability-score">-</div>
+            <div class="metric-description">Környezeti pontszám</div>
+        </div>
+    </div>
+    
+    <!-- Charts Section -->
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="chart-container">
+                <h4>📈 Tanulási Görbék</h4>
+                <canvas id="learningCurvesChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="col-md-6 mb-4">
+            <div class="chart-container">
+                <h4>🕸️ Csoportok Összehasonlítása</h4>
+                <canvas id="groupComparisonChart"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="chart-container">
+                <h4>🍩 Értékelések Megoszlása</h4>
+                <canvas id="metricsChart"></canvas>
+            </div>
+        </div>
+        
+        <div class="col-md-6 mb-4">
+            <div class="detailed-metrics">
+                <h4>📋 Részletes Statisztikák</h4>
+                <div class="stats-list">
+                    <div class="stat-item">
+                        <span class="stat-label">Összes ajánlás:</span>
+                        <span class="stat-value" id="total-recommendations">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Aktív felhasználók:</span>
+                        <span class="stat-value" id="active-users">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Befejezési arány:</span>
+                        <span class="stat-value" id="completion-rate">-</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Legjobb csoport:</span>
+                        <span class="stat-value" id="best-group">-</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Refresh Button -->
+    <div class="text-center">
+        <button class="btn btn-primary" onclick="refreshDashboard()">
+            <i class="fas fa-sync-alt"></i> Frissítés
+        </button>
+    </div>
+</div>
+
+<script>
+// Analytics page specific JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('📊 Analytics dashboard loaded');
+    
+    // Initialize charts
+    if (typeof GreenRec !== 'undefined') {
+        GreenRec.initializeCharts();
+    }
+    
+    // Load initial data
+    refreshDashboard();
+});
+
+function refreshDashboard() {
+    console.log('🔄 Refreshing dashboard...');
+    
+    // Show loading state
+    document.querySelectorAll('.metric-value').forEach(el => {
+        el.textContent = '...';
+    });
+    
+    // Load dashboard data
+    if (typeof GreenRec !== 'undefined') {
+        // This will be handled by the main.js GreenRec object
+        // The charts will be updated automatically
+    }
+}
+</script>
+{% endblock %}
