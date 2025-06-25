@@ -810,53 +810,6 @@ METRICS_TEMPLATE = """
             </div>
         </div>
         
-        {% if metrics_control and metrics_scores and metrics_explanations %}
-        <div class="row mt-4">
-            <div class="col-12">
-                <div class="card">
-                    <div class="card-header bg-info text-white">
-                        <h5>🔬 Összehasonlító Elemzés</h5>
-                    </div>
-                    <div class="card-body">
-                        <h6>F1-Score@5 Összehasonlítás:</h6>
-                        <div class="progress-group mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span>A Csoport (Control)</span>
-                                <span>{{ "%.3f"|format(metrics_control.f1_score) }}</span>
-                            </div>
-                            <div class="progress">
-                                <div class="progress-bar bg-secondary" 
-                                     style="width: {{ (metrics_control.f1_score * 100)|round(1) }}%"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="progress-group mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span>B Csoport (Scores)</span>
-                                <span>{{ "%.3f"|format(metrics_scores.f1_score) }}</span>
-                            </div>
-                            <div class="progress">
-                                <div class="progress-bar bg-warning" 
-                                     style="width: {{ (metrics_scores.f1_score * 100)|round(1) }}%"></div>
-                            </div>
-                        </div>
-                        
-                        <div class="progress-group mb-3">
-                            <div class="d-flex justify-content-between">
-                                <span>C Csoport (XAI)</span>
-                                <span>{{ "%.3f"|format(metrics_explanations.f1_score) }}</span>
-                            </div>
-                            <div class="progress">
-                                <div class="progress-bar bg-success" 
-                                     style="width: {{ (metrics_explanations.f1_score * 100)|round(1) }}%"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        
         <div class="text-center mt-4">
             <a href="/" class="btn btn-primary">🏠 Vissza a főoldalra</a>
             <a href="/analytics" class="btn btn-outline-info">📊 Általános Analytics</a>
@@ -953,25 +906,25 @@ ANALYTICS_TEMPLATE = """
 </html>
 """
 
-# Automatikus inicializálás
-@app.before_first_request
-def startup():
-    """Alkalmazás indításkor automatikus inicializálás"""
-    debug_log("🚀 Alkalmazás indítása...")
-    success = initialize_data()
-    if success:
-        debug_log("✅ Startup sikeres")
-    else:
-        debug_log("❌ Startup részben sikertelen")
+# Heroku compatibility - inicializálás az első request-nél
+@app.before_request
+def ensure_initialization():
+    """Biztosítja az inicializálást az első request előtt"""
+    if not initialization_done:
+        initialize_data()
 
 # Heroku compatibility
 if __name__ == '__main__':
-    # Automatikus inicializálás ha nincs @app.before_first_request
-    if not initialize_data():
-        debug_log("❌ Kritikus: Adatok nem betölthetők")
+    debug_log("🚀 Alkalmazás indítása...")
+    
+    # Próbáljuk meg inicializálni az adatokat startup-kor
+    initialize_data()
     
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
     debug_log(f"🌐 Alkalmazás indítása - Port: {port}")
+    debug_log(f"🔧 Debug mode: {debug_mode}")
+    debug_log(f"📊 Inicializálás státusz: {initialization_done}")
+    
     app.run(host='0.0.0.0', port=port, debug=debug_mode)
