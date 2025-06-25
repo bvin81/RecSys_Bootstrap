@@ -1,261 +1,265 @@
-# 🍃 GreenRec - Fenntartható Receptajánló
+# GreenRec - Fenntartható Receptajánló Rendszer
 
-## 🎯 Projekt Célja
-GreenRec content-based filtering alapú ajánlómotor A/B/C teszteléssel, GitHub online környezetben fejlesztve. **Az Ön valós JSON struktúrájához optimalizálva.**
+🌱 AI-alapú ajánlórendszer fenntartható és egészséges receptekhez, A/B/C teszteléssel és valós idejű analitikával.
 
-## 🚀 GitHub Codespaces Gyors Indítás
+## 🚀 Gyors telepítés
 
-### 1. Repository Megnyitása
-1. Nyissa meg ezt a repository-t GitHub-on
-2. Kattintson a **"Code" > "Codespaces" > "Create codespace"**-re
-3. Várja meg az environment betöltését (1-2 perc)
+### Előfeltételek
+- Python 3.8+
+- Git
 
-### 2. JSON Fájl Elhelyezése
-**Helyezze el az Ön `greenrec_dataset.json` fájlját a projekt gyökerében!**
+### 1. Projekt klónozása
+```bash
+git clone <repository-url>
+cd greenrec-system
+```
 
-### 3. Alkalmazás Indítása
+### 2. Virtual environment létrehozása
+```bash
+python -m venv venv
+
+# Windows
+venv\Scripts\activate
+
+# macOS/Linux
+source venv/bin/activate
+```
+
+### 3. Függőségek telepítése
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Adatfájl elhelyezése
+Helyezze el a `greenrec_dataset.json` fájlt a `data/` mappában:
+```
+greenrec-system/
+├── data/
+│   └── greenrec_dataset.json  # <- Itt kell lennie
+├── app.py
+└── ...
+```
+
+### 5. Alkalmazás indítása
 ```bash
 python app.py
 ```
 
-### 4. Webalkalmazás Elérése
-- A Codespaces automatikusan létrehoz egy **publikus linket**
-- A link a **"PORTS"** tab-ban található (port 5000)
-- Kattintson a **globe ikonra** a public URL-ért
-- **Megosztható link formátum:** `https://xyz-5000.app.github.dev`
+A GreenRec elérhető lesz: http://localhost:5000
 
-## 📊 Az Ön JSON Struktúrája (Támogatott)
+## 📁 Projekt struktúra
 
-A rendszer automatikusan felismeri és feldolgozza az Ön JSON struktúráját:
+```
+greenrec-system/
+├── app.py                    # 🚀 Fő Flask alkalmazás
+├── config.py                 # ⚙️ Központi konfiguráció
+├── requirements.txt          # 📦 Python függőségek
+├── README.md                 # 📖 Ez a fájl
+├── models/
+│   └── recommendation.py     # 🤖 ML ajánlórendszer
+├── services/
+│   ├── data_service.py      # 🗄️ Adatkezelés
+│   ├── rating_service.py    # ⭐ Értékelések és tanulás
+│   └── analytics_service.py # 📊 A/B/C teszt és metrikák
+├── utils/
+│   ├── helpers.py           # 🛠️ Segédfunkciók
+│   ├── metrics.py           # 📈 Metrika számítások
+│   ├── data_processing.py   # 🔄 Adatfeldolgozás
+│   └── validation.py        # ✅ Validációs rendszer
+├── templates/
+│   ├── base.html           # 📄 Alap HTML template
+│   ├── index.html          # 🏠 Főoldal
+│   ├── search.html         # 🔍 Keresés
+│   ├── analytics.html      # 📊 Dashboard
+│   ├── about.html          # ℹ️ Információ
+│   └── error.html          # ❌ Hibakezelés
+├── static/
+│   ├── css/style.css       # 🎨 Stílusok
+│   └── js/main.js          # ⚡ JavaScript
+├── data/
+│   └── greenrec_dataset.json # 📊 Recept adatok
+└── logs/                    # 📝 Log fájlok
+```
 
-```json
-[
-  {
-    "recipeid": 317804,
-    "title": "New Orleans-i töltött paprika",
-    "ingredients": "fokhagyma gerezdek, lila hagyma, zeller, tojás, mozzarella sajt, paprika",
-    "instructions": "Süsd meg a darált húst...",
-    "ESI": 216.9399893,
-    "HSI": 70.88419297,
-    "PPI": # 🍃 GreenRec - Fenntartható Receptajánló
+## 🎯 Funkciók
 
-## 🎯 Projekt Célja
-GreenRec content-based filtering alapú ajánlómotor A/B/C teszteléssel, GitHub online környezetben fejlesztve.
+### ✅ Implementált funkciók
+- **🤖 AI Ajánlórendszer:** TF-IDF és cosine similarity alapú
+- **🧪 A/B/C Testing:** Három különböző tanulási algoritmus
+- **📊 Real-time Analytics:** Chart.js alapú dashboard
+- **⭐ Rating System:** 1-5 csillagos értékelés
+- **🔍 Keresés:** Szöveges keresés receptekben
+- **🌱 Fenntarthatóság:** ESI/HSI/PPI kompozit pontszám
+- **📱 Reszponzív UI:** Modern, mobile-first design
+- **🛡️ Biztonság:** XSS, SQL injection védelem
 
-## 🚀 GitHub Codespaces Gyors Indítás
+### 📈 Metrikák
+- **Precision@K, Recall@K, F1-Score@K**
+- **Intra-list diverzitás**
+- **Kategória és összetevő diverzitás**
+- **Fenntarthatósági metrikák**
+- **Tanulási görbék**
+- **A/B/C csoportok statisztikai összehasonlítása**
 
-### 1. Repository Megnyitása
-1. Nyissa meg ezt a repository-t GitHub-on
-2. Kattintson a **"Code" > "Codespaces" > "Create codespace"**-re
-3. Várja meg az environment betöltését (1-2 perc)
+## 🧪 A/B/C Teszt csoportok
 
-### 2. Alkalmazás Indítása
+- **A csoport (🔴):** Baseline - tiszta content-based filtering
+- **B csoport (🟠):** Collaborative filtering módszer
+- **C csoport (🟢):** Hibrid megközelítés (legjobb teljesítmény)
+
+## 🌱 Fenntarthatósági pontszám
+
+**Kompozit képlet:**
+```
+Composite Score = ESI_final × 0.4 + HSI × 0.4 + PPI × 0.2
+```
+
+Ahol:
+- **ESI_final = 100 - normalized_ESI** (inverz, mert magasabb ESI = rosszabb környezetterhelés)
+- **HSI:** Health Score Index (0-100)
+- **PPI:** Popularity Index (0-100)
+
+## 📊 API Endpoints
+
+### Főbb API végpontok
+```
+GET  /                      # Főoldal ajánlásokkal
+GET  /search?q=<query>      # Keresés
+GET  /analytics             # Dashboard
+POST /api/rate              # Recept értékelése
+GET  /api/search            # Keresés API
+POST /api/recommend         # Ajánlások API
+POST /api/next-round        # Következő tanulási kör
+GET  /api/dashboard-data    # Dashboard adatok
+GET  /status                # Rendszer állapot
+```
+
+### Példa API hívások
+
+**Recept értékelése:**
 ```bash
-python app.py
+curl -X POST http://localhost:5000/api/rate \
+  -H "Content-Type: application/json" \
+  -d '{"recipe_id": "recipe_123", "rating": 5}'
 ```
 
-### 3. Webalkalmazás Elérése
-- A Codespaces automatikusan létrehoz egy **publikus linket**
-- A link a **"PORTS"** tab-ban található (port 5000)
-- Kattintson a **globe ikonra** a public URL-ért
-- **Megosztható link formátum:** `https://xyz-5000.app.github.dev`
-
-## 📊 JSON Adatformátum
-
-A `greenrec_dataset.json` fájlnak az alábbi struktúrát kell követnie:
-
-```json
-{
-  "metadata": {
-    "source": "Adatforrás neve",
-    "total_recipes": 10
-  },
-  "recipes": [
-    {
-      "id": 1,
-      "title": "Recept neve",
-      "ingredients": "összetevők szóközzel elválasztva",
-      "HSI": 0.8,
-      "ESI": 0.7,
-      "PPI": 0.6
-    }
-  ]
-}
-```
-
-### Kötelező mezők:
-- **title**: Recept neve
-- **ingredients**: Összetevők szöveges formában
-- **HSI**: Health Score Index (0-1 között)
-- **ESI**: Environmental Score Index (0-1 között)  
-- **PPI**: Personal Preference Index (0-1 között)
-
-## 🧪 A/B/C Teszt Funkciók
-
-### Automatikus Csoportosítás
-A rendszer automatikusan három csoportba sorolja a felhasználókat:
-
-- **A Csoport (Control):** Csak alapvető recept információk
-- **B Csoport (Scores):** + HSI, ESI, PPI pontszámok megjelenítése
-- **C Csoport (Explanations):** + AI magyarázatok (következő verzióban)
-
-### Viselkedési Tracking
-- Automatikus felhasználó azonosítás (anonim hash)
-- Keresési viselkedés naplózása
-- Értékelések és interakciók rögzítése
-- Időbélyegek minden akcióhoz
-
-## 🔗 Elérhető Oldalak
-
-| URL | Leírás |
-|-----|--------|
-| `/` | Főoldal - keresés |
-| `/status` | Rendszer állapot és statisztikák |
-| `/reload` | JSON adatok újratöltése |
-| `/export` | Viselkedési adatok JSON exportálása |
-
-## 📈 Használati Forgatókönyv
-
-### Kutatók számára:
-1. **Setup:** JSON fájl feltöltése → Codespaces indítása → `python app.py`
-2. **Megosztás:** Public link küldése a tesztelőknek
-3. **Monitoring:** `/status` oldal folyamatos ellenőrzése
-4. **Adatgyűjtés:** `/export` használata az eredmények letöltéséhez
-
-### Tesztelők számára:
-1. **Link megnyitása** (automatikus csoportosítás történik)
-2. **Receptek keresése** (pl. "paradicsom mozzarella")
-3. **Eredmények böngészése** (csoport-specifikus felület)
-4. **Értékelések és interakciók**
-
-## 🛠️ Fejlesztési Fázisok
-
-### ✅ FÁZIS 1: Alapfunkciók (KÉSZ)
-- [x] JSON adatok betöltése
-- [x] Egyszerű keresési funkció
-- [x] A/B/C csoportosítás
-- [x] Viselkedési tracking
-- [x] Státusz monitoring
-
-### 🔄 FÁZIS 2: ML Algoritmus (KÖVETKEZŐ)
-- [ ] Content-based filtering implementálása
-- [ ] TF-IDF vektorok és cosine similarity
-- [ ] Hibrid pontozási rendszer
-
-### 🔄 FÁZIS 3: UI Fejlesztés (KÉSŐBB)
-- [ ] Három különböző template A/B/C csoportoknak
-- [ ] Pontszámok vizualizációja (B csoport)
-- [ ] XAI magyarázatok (C csoport)
-
-### 🔄 FÁZIS 4: Analytics (UTOLSÓ)
-- [ ] Részletes analytics dashboard
-- [ ] Statisztikai elemzési funkciók
-- [ ] Exportálási lehetőségek
-
-## 🧪 Tesztelési Útmutató
-
-### Alapfunkciók Ellenőrzése:
-1. **JSON betöltés:** `/status` oldal ellenőrzése
-2. **Keresés:** "paradicsom" vagy "quinoa" beírása
-3. **Csoportosítás:** Csoport megjelenítése a jobb felső sarokban
-4. **Értékelés:** "Tetszik" gomb működése
-
-### Hibakeresés:
+**Keresés:**
 ```bash
-# JSON validáció
-python -c "import json; print('JSON OK') if json.load(open('greenrec_dataset.json')) else print('JSON ERROR')"
-
-# Flask teszt
-python -c "from app import load_json_data; print('SUCCESS' if load_json_data() else 'FAILED')"
+curl "http://localhost:5000/api/search?q=vegan+pasta&limit=10"
 ```
 
-## 📊 Adatgyűjtés és Elemzés
+## 🔧 Konfiguráció
 
-### Exportált Adatok Struktúrája:
-```json
-{
-  "export_timestamp": "2024-06-25T10:30:00",
-  "behaviors": [
-    {
-      "user_id": "abc123",
-      "group": "A|B|C",
-      "action": "search|rate|page_view", 
-      "timestamp": "2024-06-25T10:30:00",
-      "data": {"query": "paradicsom"}
-    }
-  ],
-  "summary": {
-    "total_users": 5,
-    "group_distribution": {"A": 2, "B": 2, "C": 1},
-    "action_distribution": {"search": 8, "rate": 3}
-  }
-}
-```
+A `config.py` fájlban található az összes beállítás:
 
-### Python Elemzés Példa:
 ```python
-import pandas as pd
-import json
+# Főbb konfigurációs paraméterek
+SUSTAINABILITY_WEIGHT = 0.4    # ESI súly
+HEALTH_WEIGHT = 0.4           # HSI súly  
+POPULARITY_WEIGHT = 0.2       # PPI súly
 
-# Adatok betöltése
-with open('export.json') as f:
-    data = json.load(f)
-
-df = pd.DataFrame(data['behaviors'])
-
-# Csoportonkénti elemzés
-group_stats = df.groupby('group').agg({
-    'user_id': 'nunique',
-    'action': 'count'
-})
-
-print("Felhasználók csoportonként:", group_stats)
+TFIDF_MAX_FEATURES = 5000     # TF-IDF feature limit
+DEFAULT_RECOMMENDATIONS = 6    # Ajánlások száma/kör
+MAX_LEARNING_ROUNDS = 5       # Maximum tanulási körök
 ```
 
-## 🔒 Adatvédelem és Etika
+## 🧪 Tesztelés
 
-### Adatkezelés:
-- **Anonimitás:** Csak hash-elt felhasználói azonosítók
-- **Minimális adatgyűjtés:** Csak kutatáshoz szükséges metrikák
-- **Transzparencia:** Nyílt forráskód, világos célok
+### Fejlesztői tesztelés
+```bash
+# Egység tesztek (ha vannak)
+python -m pytest tests/
 
-### Javasolt Tájékoztatás Résztvevőknek:
-> "Részt vesz egy kutatásban, amely receptajánló rendszereket hasonlít össze. Anonim módon rögzítjük a keresési viselkedését kutatási célokra. Személyes adatokat nem gyűjtünk."
+# Kód minőség ellenőrzés
+flake8 .
+black . --check
+```
 
-## 🛠️ Hibaelhárítás
+### Manuális tesztelés
+1. **Regisztráció:** Új felhasználó automatikus létrehozása
+2. **Értékelés:** 6 recept értékelése 1-5 csillaggal
+3. **Tanulás:** "Következő kör" gomb megjelenése
+4. **Personalizáció:** Új ajánlások a korábbi értékelések alapján
+5. **Analytics:** Metrikák frissülése a dashboard-on
 
-### Gyakori Problémák:
+## 📝 Logging
 
-**JSON betöltési hiba:**
-- Ellenőrizze a fájl helyét és nevét
-- Validálja a JSON struktúrát
-- Nézze meg a `/status` oldalt
+A rendszer részletes logokat készít:
+- **INFO:** Általános működési információk
+- **WARNING:** Figyelmeztetések és nem kritikus hibák
+- **ERROR:** Hibák és kivételek
+- **DEBUG:** Részletes debug információk (development módban)
 
-**Port foglaltság:**
-- Módosítsa az `app.py`-ban: `app.run(port=5001)`
+Log fájlok helye: `logs/` mappa
 
-**Codespaces timeout:**
-- 30 perc inaktivitás után alvó állapotba kerül
-- Újraindítás: `python app.py`
+## 🚀 Production telepítés
 
-**Üres eredmények:**
-- Ellenőrizze a keresési kifejezést
-- Próbálja: "paradicsom", "quinoa", "avokádó"
+### Environment változók
+```bash
+export FLASK_ENV=production
+export SECRET_KEY=your-secure-secret-key-here
+export DATABASE_URL=your-database-url-here  # opcionális
+```
+
+### Gunicorn használata
+```bash
+pip install gunicorn
+gunicorn -w 4 -b 0.0.0.0:5000 app:app
+```
+
+### Docker (opcionális)
+```dockerfile
+FROM python:3.8-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+EXPOSE 5000
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:5000", "app:app"]
+```
+
+## 🤝 Fejlesztés
+
+### Kód stílus
+- **PEP 8** Python kód stílus
+- **Type hints** használata
+- **Docstring** minden függvényhez
+- **Modular architecture** - tiszta szeparáció
+
+### Új funkció hozzáadása
+1. Fork és branch létrehozása
+2. Implementáció a megfelelő modulban
+3. Tesztek írása
+4. Pull request létrehozása
+
+## 📚 Használt technológiák
+
+- **Backend:** Flask, Python 3.8+
+- **ML:** scikit-learn, pandas, numpy
+- **Frontend:** Vanilla JavaScript, Chart.js
+- **Styling:** CSS3, CSS Grid, Flexbox
+- **Data:** JSON-based storage
+- **Security:** Input validation, XSS/SQL injection protection
+
+## 🏆 Államvizsga demonstráció
+
+A GreenRec ideális államvizsga projektként:
+
+1. **ML algoritmusok:** Bemutatható TF-IDF, similarity számítások
+2. **A/B Testing:** Statisztikai szignifikancia tesztek
+3. **Clean Code:** Moduláris architektúra, design patterns
+4. **Full-Stack:** Backend + Frontend + Database
+5. **Analytics:** Real-time metrikák és vizualizáció
+6. **Security:** Biztonsági megfontolások implementálva
 
 ## 📞 Támogatás
 
-### Következő Lépések:
-1. **Most:** Alapfunkciók tesztelése
-2. **Következő:** ML algoritmus implementálása
-3. **Később:** UI fejlesztés három verzióban
+Ha bármilyen problémába ütközik:
+1. Ellenőrizze a log fájlokat
+2. Győződjön meg róla, hogy a `greenrec_dataset.json` elérhető
+3. Ellenőrizze a Python és pip verziókat
+4. Indítsa újra a virtual environment-et
 
-### Technikai Kérdések:
-- GitHub Issues használata
-- `/status` oldal információi
-- Console output ellenőrzése
+## 📄 Licenc
 
----
-
-**🎉 Az alkalmazás készen áll az alapvető tesztelésre!** 
-
-A következő fejlesztési ciklusban implementáljuk a content-based filtering algoritmust és a fejlettebb A/B/C UI verziókat.
+Ez a projekt oktatási célokra készült, MIT licenc alatt.
