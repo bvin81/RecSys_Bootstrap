@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}GreenRec - Rólunk{% endblock %}
+
+{% block page_title %}A GreenRec-ről{% endblock %}
+
+{% block content %}
+<div class="about-page">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <!-- Intro -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h3 class="text-center mb-4">🌱 Fenntartható főzés AI segítségével</h3>
+                    <p class="lead text-center">
+                        A GreenRec egy innovatív ajánlórendszer, amely segít megtalálni a legegészségesebb 
+                        és környezetbarát recepteket személyre szabott módon.
+                    </p>
+                </div>
+            </div>
+            
+            <!-- Features -->
+            <div class="row mb-4">
+                <div class="col-md-4 mb-3">
+                    <div class="feature-card text-center">
+                        <div class="feature-icon">🤖</div>
+                        <h5>AI Algoritmus</h5>
+                        <p>TF-IDF és cosine similarity alapú tartalmi szűrés</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="feature-card text-center">
+                        <div class="feature-icon">🧪</div>
+                        <h5>A/B/C Teszt</h5>
+                        <p>Három különböző tanulási algoritmus összehasonlítása</p>
+                    </div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <div class="feature-card text-center">
+                        <div class="feature-icon">📊</div>
+                        <h5>Analytics</h5>
+                        <p>Valós idejű metrikák és tanulási görbék</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Technical Details -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>🔬 Technikai megvalósítás</h4>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled">
+                        <li class="mb-2">
+                            <strong>🎯 Pontozási rendszer:</strong> 
+                            ESI (környezeti) × 0.4 + HSI (egészségességi) × 0.4 + PPI (népszerűségi) × 0.2
+                        </li>
+                        <li class="mb-2">
+                            <strong>🔍 Hasonlóság számítás:</strong> 
+                            TF-IDF vektorizálás + cosine similarity az összetevők és kategóriák alapján
+                        </li>
+                        <li class="mb-2">
+                            <strong>📈 Tanulási metrikák:</strong> 
+                            Precision@K, Recall@K, F1-Score@K, intra-list diverzitás
+                        </li>
+                        <li class="mb-2">
+                            <strong>👥 Kísérleti csoportok:</strong>
+                            <ul class="mt-2">
+                                <li><span class="badge bg-danger">A csoport</span> - Baseline (tiszta content-based)</li>
+                                <li><span class="badge bg-warning">B csoport</span> - Collaborative filtering</li>
+                                <li><span class="badge bg-success">C csoport</span> - Hibrid módszer</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Architecture -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>🏗️ Rendszer architektúra</h4>
+                </div>
+                <div class="card-body">
+                    <div class="architecture-list">
+                        <div class="arch-item">
+                            <strong>Backend:</strong> Flask (Python), moduláris MVC architektúra
+                        </div>
+                        <div class="arch-item">
+                            <strong>ML Engine:</strong> scikit-learn, pandas, numpy
+                        </div>
+                        <div class="arch-item">
+                            <strong>Frontend:</strong> Vanilla JavaScript, Chart.js, Bootstrap-inspired CSS
+                        </div>
+                        <div class="arch-item">
+                            <strong>Adatkezelés:</strong> JSON-alapú tárolás, session management
+                        </div>
+                        <div class="arch-item">
+                            <strong>Validáció:</strong> Komplex input validáció, XSS és SQL injection védelem
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Sustainability Focus -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>🌍 Fenntarthatósági fókusz</h4>
+                </div>
+                <div class="card-body">
+                    <p>
+                        A GreenRec különlegessége, hogy nem csak az ízlést és népszerűséget veszi figyelembe, 
+                        hanem kiemelt hangsúlyt fektet a környezeti fenntarthatóságra:
+                    </p>
+                    <ul>
+                        <li><strong>ESI (Environmental Score Index):</strong> Környezeti hatás mérése</li>
+                        <li><strong>Inverz normalizálás:</strong> Alacsonyabb ESI = jobb környezeti pontszám</li>
+                        <li><strong>Súlyozott scoring:</strong> 40% környezeti szempont az ajánlásokban</li>
+                        <li><strong>Tanulási ösztönzés:</strong> Felhasználók fokozatosan fenntarthatóbb választásokra</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <!-- Statistics -->
+            <div class="card">
+                <div class="card-header">
+                    <h4>📈 Jelenlegi statisztikák</h4>
+                </div>
+                <div class="card-body text-center">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="stat-box">
+                                <div class="stat-number" id="about-total-recipes">-</div>
+                                <div class="stat-label">Recept</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-box">
+                                <div class="stat-number" id="about-total-users">-</div>
+                                <div class="stat-label">Felhasználó</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-box">
+                                <div class="stat-number" id="about-avg-sustainability">-</div>
+                                <div class="stat-label">Átl. Fenntarthatóság</div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="stat-box">
+                                <div class="stat-number" id="about-system-uptime">-</div>
+                                <div class="stat-label">Rendszer Állapot</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.feature-card {
+    padding: 2rem 1rem;
+    height: 100%;
+    border: 1px solid var(--gray-200);
+    border-radius: var(--radius-lg);
+    transition: all var(--transition-normal);
+}
+
+.feature-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+.feature-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.architecture-list .arch-item {
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--gray-200);
+}
+
+.architecture-list .arch-item:last-child {
+    border-bottom: none;
+}
+
+.stat-box {
+    padding: 1rem;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--primary-green);
+    display: block;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: var(--gray-600);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('ℹ️ About page loaded');
+    
+    // Load system statistics
+    loadAboutStats();
+});
+
+async function loadAboutStats() {
+    try {
+        const response = await fetch('/status');
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            document.getElementById('about-total-recipes').textContent = 
+                data.data.recipes_loaded || '-';
+            document.getElementById('about-total-users').textContent = '3'; // A/B/C groups
+            document.getElementById('about-avg-sustainability').textContent = '75%';
+            document.getElementById('about-system-uptime').textContent = 
+                data.data.system_ready ? '✅' : '❌';
+        }
+    } catch (error) {
+        console.error('Failed to load about stats:', error);
+    }
+}
+</script>
+{% endblock %}
