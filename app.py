@@ -1,8 +1,8 @@
-# app.py - GreenRec with Explicit Ratings (Heroku Compatible)
+# app.py - GreenRec with Explicit Ratings (Flask 2.3.3 Compatible)
 """
 GreenRec - Fenntartható Receptajánló Rendszer
 A/B/C teszt + Explicit Rating funkcionalitással
-Heroku deployment optimalizált verzió
+Flask 2.3.3 + Heroku deployment optimalizált verzió
 """
 
 from flask import Flask, render_template_string, request, session, jsonify
@@ -26,8 +26,9 @@ recipes_df = None
 tfidf_matrix = None
 vectorizer = None
 behavior_data = []
-ratings_data = []  # Explicit ratings tárolás
+ratings_data = []
 load_debug_messages = []
+initialization_done = False
 
 def debug_log(message):
     """Debug üzenetek naplózása"""
@@ -35,8 +36,11 @@ def debug_log(message):
     print(f"DEBUG: {message}")
 
 def initialize_data():
-    """Adatok inicializálása startup-kor"""
-    global recipes_df, tfidf_matrix, vectorizer
+    """Adatok inicializálása"""
+    global recipes_df, tfidf_matrix, vectorizer, initialization_done
+    
+    if initialization_done:
+        return True
     
     try:
         debug_log("🔄 Adatok inicializálása...")
@@ -95,7 +99,7 @@ def initialize_data():
                 max_val = recipes_df[col].max()
                 recipes_df[f'{col}_norm'] = recipes_df[col] / max_val if max_val > 0 else 0
             else:
-                recipes_df[col] = random.randint(30, 90)  # Dummy values
+                recipes_df[col] = random.randint(30, 90)
                 recipes_df[f'{col}_norm'] = recipes_df[col] / 100
         
         # TF-IDF vektorizálás
@@ -106,16 +110,21 @@ def initialize_data():
             debug_log(f"✅ TF-IDF matrix: {tfidf_matrix.shape}")
         except Exception as tfidf_error:
             debug_log(f"❌ TF-IDF hiba: {tfidf_error}")
-            # Fallback: egyszerű bag-of-words
             vectorizer = None
             tfidf_matrix = None
         
+        initialization_done = True
         debug_log(f"✅ Inicializálás sikeres: {len(recipes_df)} recept")
         return True
         
     except Exception as e:
         debug_log(f"❌ Inicializálási hiba: {e}")
         return False
+
+def ensure_initialized():
+    """Biztosítja, hogy az adatok inicializálva legyenek"""
+    if not initialization_done:
+        initialize_data()
 
 def get_user_id():
     """Egyedi felhasználói azonosító"""
@@ -181,6 +190,8 @@ def save_rating(user_id, recipe_id, rating, comment=""):
 
 def search_recipes(query, top_n=10):
     """Content-based filtering keresés"""
+    ensure_initialized()
+    
     if recipes_df is None:
         return []
     
@@ -305,6 +316,8 @@ def calculate_group_metrics(group=None, k=5):
 # Flask route-ok
 @app.route('/')
 def home():
+    ensure_initialized()
+    
     user_id = get_user_id()
     group = get_user_group(user_id)
     
@@ -322,6 +335,8 @@ def home():
 
 @app.route('/search', methods=['POST'])
 def search():
+    ensure_initialized()
+    
     user_id = get_user_id()
     group = get_user_group(user_id)
     query = request.form.get('query', '').strip()
@@ -430,6 +445,8 @@ def analytics():
 @app.route('/status')
 def status():
     """Rendszer status JSON"""
+    ensure_initialized()
+    
     try:
         status_info = {
             'receptek_betoltve': recipes_df is not None,
@@ -437,8 +454,10 @@ def status():
             'viselkedesi_adatok': len(behavior_data),
             'ertekelesek_szama': len(ratings_data),
             'algoritmus_kesz': tfidf_matrix is not None,
+            'initialization_done': initialization_done,
             'utolso_frissites': datetime.now().isoformat(),
-            'deployment': 'heroku-with-ratings',
+            'deployment': 'heroku-flask-2.3.3-fix',
+            'flask_version': '2.3.3',
             'debug_messages_count': len(load_debug_messages),
             'debug_info': {
                 'working_directory': os.getcwd(),
@@ -456,7 +475,16 @@ def status():
         debug_log(f"❌ Status hiba: {e}")
         return jsonify({'error': str(e)}), 500
 
-# HTML Templates
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    return jsonify({
+        'status': 'healthy', 
+        'timestamp': datetime.now().isoformat(),
+        'initialized': initialization_done
+    })
+
+# HTML Templates (ugyanazok mint az előző verzióban)
 HOME_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="hu">
