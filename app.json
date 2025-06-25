@@ -1,0 +1,27 @@
+{
+  "name": "greenrec-research",
+  "description": "GreenRec - Fenntartható Receptajánló Kutatási Platform",
+  "repository": "https://github.com/yourusername/greenrec-heroku",
+  "keywords": ["python", "flask", "recommendation-system", "a-b-testing", "research"],
+  "env": {
+    "FLASK_ENV": {
+      "description": "Flask environment",
+      "value": "production"
+    },
+    "SECRET_KEY": {
+      "description": "Secret key for Flask sessions",
+      "generator": "secret"
+    }
+  },
+  "formation": {
+    "web": {
+      "quantity": 1,
+      "size": "eco"
+    }
+  },
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ]
+}
