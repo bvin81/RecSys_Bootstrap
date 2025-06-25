@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}GreenRec - Főoldal{% endblock %}
+
+{% block page_title %}Személyre szabott receptajánlások{% endblock %}
+
+{% block page_subtitle %}
+<p class="text-muted">Találj fenntartható és egészséges recepteket AI segítségével</p>
+{% endblock %}
+
+{% block content %}
+<!-- User Info -->
+{% if user_session %}
+<div class="user-dashboard mb-4">
+    <div class="alert alert-info d-flex align-items-center">
+        <i class="fas fa-user-circle me-2"></i>
+        <span>Üdvözöljük, <strong>{{ user_session.user_group }}</strong> csoport tagja! 
+              ({{ user_session.learning_round }}. tanulási kör)</span>
+    </div>
+</div>
+{% endif %}
+
+<!-- Piktogramok magyarázata -->
+<div class="icon-legend mb-4">
+    <div class="card">
+        <div class="card-body">
+            <h6 class="card-title mb-3">📊 Pontszám magyarázat:</h6>
+            <div class="row text-center">
+                <div class="col-md-4">
+                    <span class="metric-icon">🌍</span>
+                    <small class="d-block">Környezetbarát</small>
+                </div>
+                <div class="col-md-4">
+                    <span class="metric-icon">💚</span>
+                    <small class="d-block">Egészséges</small>
+                </div>
+                <div class="col-md-4">
+                    <span class="metric-icon">👤</span>
+                    <small class="d-block">Népszerű</small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rating Progress -->
+<div class="rating-progress mb-4">
+    <div class="card">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <span class="rating-progress-text">0/6 recept értékelve</span>
+                <button class="btn btn-success next-round-btn hidden" disabled>
+                    Következő kör indítása
+                </button>
+            </div>
+            <div class="progress mt-2">
+                <div class="progress-fill" style="width: 0%"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Recommendations Grid -->
+<div class="recipe-grid">
+    {% if recommendations %}
+        {% for recipe in recommendations %}
+        <div class="recipe-card fade-in">
+            <div class="recipe-image-container">
+                <img src="{{ recipe.image or '/static/images/default-recipe.jpg' }}" 
+                     alt="{{ recipe.name }}" 
+                     class="recipe-image"
+                     loading="lazy">
+                <div class="recommendation-badge">
+                    {{ "%.0f"|format(recipe.composite_score or 0) }}
+                </div>
+            </div>
+            
+            <div class="recipe-content">
+                <h3 class="recipe-title">{{ recipe.name }}</h3>
+                
+                {% if recipe.description %}
+                <p class="recipe-description">{{ recipe.description[:150] }}{% if recipe.description|length > 150 %}...{% endif %}</p>
+                {% endif %}
+                
+                <div class="recipe-metrics">
+                    <div class="metric-item">
+                        <span class="metric-icon">🌍</span>
+                        <span class="metric-value">{{ "%.0f"|format(recipe.ESI_final or 0) }}</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-icon">💚</span>
+                        <span class="metric-value">{{ "%.0f"|format(recipe.HSI or 0) }}</span>
+                    </div>
+                    <div class="metric-item">
+                        <span class="metric-icon">👤</span>
+                        <span class="metric-value">{{ "%.0f"|format(recipe.PPI or 0) }}</span>
+                    </div>
+                </div>
+                
+                <div class="composite-score">
+                    Kompozit: {{ "%.0f"|format(recipe.composite_score or 0) }}
+                </div>
+                
+                <div class="star-rating">
+                    {% for rating in range(1, 6) %}
+                    <span class="star" 
+                          data-recipe-id="{{ recipe.id }}" 
+                          data-rating="{{ rating }}">⭐</span>
+                    {% endfor %}
+                </div>
+                
+                {% if recipe.categories %}
+                <div class="category-tags mt-2">
+                    {% for category in recipe.categories.split(',')[:3] %}
+                    <span class="category-tag">{{ category.strip() }}</span>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="col-12">
+            <div class="alert alert-warning text-center">
+                <i class="fas fa-exclamation-triangle mb-2"></i>
+                <h5>Nincs elérhető ajánlás</h5>
+                <p>Kérjük, próbálja meg később vagy használja a keresést.</p>
+                <a href="{{ url_for('search') }}" class="btn btn-primary">
+                    <i class="fas fa-search"></i> Keresés
+                </a>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+// Page-specific JavaScript
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('🏠 Index page loaded with {{ recommendations|length }} recommendations');
+    
+    // Initialize any page-specific features
+    if (typeof GreenRec !== 'undefined') {
+        GreenRec.updateRatingProgress();
+    }
+});
+</script>
+{% endblock %}
