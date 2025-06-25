@@ -1,5 +1,5 @@
 """
-User Study Module - Heroku Compatible
+User Study Module
 """
 from .routes import user_study_bp
 
