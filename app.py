@@ -1,9 +1,10 @@
-# app.py - GreenRec Complete Debug Version
+# app.py - GreenRec Logging Fix Version
 """
 GreenRec - Fenntartható Receptajánló Rendszer
-TELJES DEBUG verzió hibakeresési információkkal és fallback adatokkal
+LOGGING FIX verzió - print helyett logging használat
 """
 import os
+import logging
 from flask import Flask, request, render_template_string, session, jsonify, redirect
 import pandas as pd
 import numpy as np
@@ -14,6 +15,10 @@ from datetime import datetime
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
+# Logging konfiguráció
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 # Flask app inicializálás
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'greenrec-secret-key-2024')
@@ -23,6 +28,13 @@ recipes_df = None
 tfidf_matrix = None
 vectorizer = None
 behavior_data = []
+load_debug_messages = []  # Debug üzenetek tárolása
+
+def debug_log(message):
+    """Debug üzenet logging és tárolás"""
+    logger.info(message)
+    load_debug_messages.append(f"{datetime.now().strftime('%H:%M:%S')} - {message}")
+    print(message)  # Fallback
 
 def create_fallback_data():
     """Minta adatok létrehozása ha nincs JSON"""
@@ -85,103 +97,80 @@ def create_fallback_data():
     ]
 
 def load_recipes():
-    """JSON receptek betöltése - DEBUG verzióval"""
+    """JSON receptek betöltése - LOGGING verzióval"""
     global recipes_df, tfidf_matrix, vectorizer
     
-    print("🔍 DEBUG: load_recipes() indítása...")
+    debug_log("🔍 DEBUG: load_recipes() indítása...")
     
     try:
         # Working directory ellenőrzése
         current_dir = os.getcwd()
-        print(f"📁 DEBUG: Current working directory: {current_dir}")
+        debug_log(f"📁 DEBUG: Current working directory: {current_dir}")
         
         # Fájlok listázása
         files_in_dir = os.listdir(current_dir)
-        print(f"📋 DEBUG: Fájlok a working directory-ban: {files_in_dir}")
+        debug_log(f"📋 DEBUG: Fájlok a working directory-ban: {files_in_dir}")
         
-        # Lehetséges JSON fájl nevek ellenőrzése
-        possible_files = [
-            'greenrec_dataset.json',
-            'greenrec-dataset.json', 
-            'dataset.json',
-            'recipes.json',
-            'data.json'
-        ]
+        # JSON fájl keresése
+        json_file_path = os.path.join(current_dir, 'greenrec_dataset.json')
+        debug_log(f"🔍 DEBUG: JSON fájl keresése: {json_file_path}")
         
-        json_data = None
-        used_file = None
-        
-        # Fájlok próbálgatása
-        for filename in possible_files:
-            full_path = os.path.join(current_dir, filename)
-            print(f"🔍 DEBUG: Próbálkozás: {full_path}")
+        if os.path.exists(json_file_path):
+            debug_log("✅ DEBUG: greenrec_dataset.json megtalálva!")
             
-            if os.path.exists(full_path):
-                print(f"✅ DEBUG: Fájl megtalálva: {filename}")
-                try:
-                    with open(full_path, 'r', encoding='utf-8') as f:
-                        json_content = f.read()
-                        print(f"📄 DEBUG: Fájl mérete: {len(json_content)} karakter")
-                        print(f"📄 DEBUG: Első 200 karakter: {json_content[:200]}...")
-                        
-                    # JSON parsing
-                    with open(full_path, 'r', encoding='utf-8') as f:
-                        json_data = json.load(f)
-                        print(f"✅ DEBUG: JSON sikeresen betöltve: {type(json_data)}")
-                        
-                    used_file = filename
-                    break
-                    
-                except json.JSONDecodeError as e:
-                    print(f"❌ DEBUG: JSON parse hiba {filename}-ben: {e}")
-                    continue
-                except Exception as e:
-                    print(f"❌ DEBUG: Hiba {filename} beolvasásakor: {e}")
-                    continue
-            else:
-                print(f"❌ DEBUG: Fájl nem található: {full_path}")
-        
-        # Ha nincs JSON fájl, készítsünk minta adatokat
-        if json_data is None:
-            print("🔄 DEBUG: Nincs JSON fájl, minta adatok létrehozása...")
-            json_data = create_fallback_data()
-            used_file = "built-in fallback data"
-        
-        # JSON struktúra elemzése
-        print(f"🔍 DEBUG: JSON adatok típusa: {type(json_data)}")
-        
-        # JSON struktúra kezelése
-        if isinstance(json_data, list):
-            recipes = json_data
-            print(f"✅ DEBUG: JSON array, {len(recipes)} elem")
-        elif isinstance(json_data, dict) and 'recipes' in json_data:
-            recipes = json_data['recipes']
-            print(f"✅ DEBUG: JSON object 'recipes' kulccsal, {len(recipes)} elem")
-        elif isinstance(json_data, dict):
-            recipes = [json_data]  # Single recipe case
-            print("✅ DEBUG: Egyetlen recipe object")
+            # Fájl méret ellenőrzése
+            file_size = os.path.getsize(json_file_path)
+            debug_log(f"📄 DEBUG: Fájl mérete: {file_size} byte")
+            
+            if file_size == 0:
+                debug_log("❌ DEBUG: A JSON fájl üres!")
+                raise ValueError("Üres JSON fájl")
+            
+            # JSON tartalom olvasása
+            with open(json_file_path, 'r', encoding='utf-8') as f:
+                json_content = f.read()
+                debug_log(f"📄 DEBUG: Beolvasott tartalom hossza: {len(json_content)} karakter")
+                debug_log(f"📄 DEBUG: Első 200 karakter: {json_content[:200]}...")
+            
+            # JSON parsing
+            with open(json_file_path, 'r', encoding='utf-8') as f:
+                json_data = json.load(f)
+                debug_log(f"✅ DEBUG: JSON parse sikeres: {type(json_data)}")
+                
+                if isinstance(json_data, list):
+                    debug_log(f"📊 DEBUG: JSON array {len(json_data)} elemmel")
+                    recipes = json_data
+                elif isinstance(json_data, dict):
+                    debug_log("📊 DEBUG: JSON object formátum")
+                    recipes = [json_data]  # Single recipe
+                else:
+                    raise ValueError(f"Váratlan JSON struktúra: {type(json_data)}")
         else:
-            raise ValueError(f"Ismeretlen JSON struktúra: {type(json_data)}")
+            debug_log("❌ DEBUG: greenrec_dataset.json nem található!")
+            debug_log("🔄 DEBUG: Fallback adatok használata...")
+            recipes = create_fallback_data()
         
-        print(f"📊 DEBUG: Talált receptek száma: {len(recipes)}")
+        debug_log(f"📊 DEBUG: Feldolgozandó receptek száma: {len(recipes)}")
         
-        if len(recipes) > 0:
-            print(f"📝 DEBUG: Első recept kulcsai: {list(recipes[0].keys())}")
-            print(f"📝 DEBUG: Első recept: {recipes[0]}")
+        if len(recipes) == 0:
+            debug_log("❌ DEBUG: Nincsenek receptek!")
+            raise ValueError("Üres recipe lista")
         
         # DataFrame létrehozása
+        debug_log("🔄 DEBUG: DataFrame létrehozása...")
         recipes_df = pd.DataFrame(recipes)
-        print(f"📊 DEBUG: DataFrame létrehozva: {recipes_df.shape}")
+        debug_log(f"📊 DEBUG: DataFrame shape: {recipes_df.shape}")
+        debug_log(f"📊 DEBUG: DataFrame oszlopok: {list(recipes_df.columns)}")
         
         # Oszlopok normalizálása
-        print("🔄 DEBUG: Oszlopok normalizálása...")
+        debug_log("🔄 DEBUG: Oszlopok normalizálása...")
         recipes_df['id'] = recipes_df.get('recipeid', range(len(recipes_df)))
         recipes_df['name'] = recipes_df.get('title', 'Névtelen recept')
         recipes_df['ingredients_text'] = recipes_df.get('ingredients', '')
         recipes_df['instructions'] = recipes_df.get('instructions', '')
         
         # Numerikus oszlopok
-        print("🔄 DEBUG: Numerikus oszlopok feldolgozása...")
+        debug_log("🔄 DEBUG: Numerikus oszlopok konvertálása...")
         recipes_df['esi'] = pd.to_numeric(recipes_df.get('ESI', 0), errors='coerce').fillna(0)
         recipes_df['hsi'] = pd.to_numeric(recipes_df.get('HSI', 0), errors='coerce').fillna(0)
         recipes_df['ppi'] = pd.to_numeric(recipes_df.get('PPI', 0), errors='coerce').fillna(0)
@@ -189,63 +178,65 @@ def load_recipes():
         recipes_df['category'] = recipes_df.get('category', 'Egyéb')
         recipes_df['image'] = recipes_df.get('images', '')
         
-        print(f"📋 DEBUG: Végleges DataFrame oszlopok: {list(recipes_df.columns)}")
-        print(f"📝 DEBUG: Első recept név: {recipes_df.iloc[0]['name'] if len(recipes_df) > 0 else 'N/A'}")
-        print(f"📊 DEBUG: ESI értékek: min={recipes_df['esi'].min()}, max={recipes_df['esi'].max()}")
-        print(f"📊 DEBUG: HSI értékek: min={recipes_df['hsi'].min()}, max={recipes_df['hsi'].max()}")
+        debug_log(f"📋 DEBUG: Végleges oszlopok: {list(recipes_df.columns)}")
+        debug_log(f"📝 DEBUG: Első recept: {recipes_df.iloc[0]['name']}")
+        debug_log(f"📊 DEBUG: ESI tartomány: {recipes_df['esi'].min()}-{recipes_df['esi'].max()}")
+        debug_log(f"📊 DEBUG: HSI tartomány: {recipes_df['hsi'].min()}-{recipes_df['hsi'].max()}")
         
-        # Content-based filtering: TF-IDF matrix
-        if len(recipes_df) > 0:
-            print("🤖 DEBUG: TF-IDF mátrix létrehozása...")
-            vectorizer = TfidfVectorizer(
-                max_features=1000, 
-                stop_words=None,
-                lowercase=True,
-                token_pattern=r'\b\w+\b'
-            )
-            
-            ingredients_texts = recipes_df['ingredients_text'].fillna('')
-            print(f"📝 DEBUG: Első összetevő szöveg: {ingredients_texts.iloc[0][:100]}...")
-            
-            tfidf_matrix = vectorizer.fit_transform(ingredients_texts)
-            print(f"🤖 DEBUG: TF-IDF mátrix létrehozva: {tfidf_matrix.shape}")
-            print(f"🤖 DEBUG: Vocabulary mérete: {len(vectorizer.vocabulary_)}")
+        # TF-IDF matrix létrehozása
+        debug_log("🤖 DEBUG: TF-IDF mátrix építése...")
+        vectorizer = TfidfVectorizer(
+            max_features=1000, 
+            stop_words=None,
+            lowercase=True,
+            token_pattern=r'\b\w+\b'
+        )
         
-        print(f"✅ DEBUG: Sikeres betöltés! Forrás: {used_file}")
-        print(f"✅ DEBUG: Végleges receptek száma: {len(recipes_df)}")
+        ingredients_texts = recipes_df['ingredients_text'].fillna('')
+        debug_log(f"📝 DEBUG: TF-IDF input példa: {ingredients_texts.iloc[0][:100]}...")
+        
+        tfidf_matrix = vectorizer.fit_transform(ingredients_texts)
+        debug_log(f"🤖 DEBUG: TF-IDF mátrix kész: {tfidf_matrix.shape}")
+        debug_log(f"🤖 DEBUG: Vocabulary size: {len(vectorizer.vocabulary_)}")
+        
+        debug_log("✅ DEBUG: load_recipes() SIKERES!")
+        debug_log(f"✅ DEBUG: Végleges receptek száma: {len(recipes_df)}")
         return True
         
     except Exception as e:
-        print(f"❌ DEBUG: Kritikus hiba a receptek betöltésekor: {e}")
-        import traceback
-        print(f"🔍 DEBUG: Traceback: {traceback.format_exc()}")
+        debug_log(f"❌ DEBUG: KRITIKUS HIBA: {str(e)}")
+        debug_log(f"❌ DEBUG: Exception type: {type(e).__name__}")
         
-        # Fallback: mindig hozzon létre minta adatokat hiba esetén
-        print("🔄 DEBUG: Fallback minta adatok létrehozása...")
+        import traceback
+        traceback_str = traceback.format_exc()
+        debug_log(f"🔍 DEBUG: Traceback: {traceback_str}")
+        
+        # Utolsó próbálkozás: fallback adatok
+        debug_log("🔄 DEBUG: Utolsó próba - tiszta fallback...")
         try:
-            fallback_data = create_fallback_data()
-            recipes_df = pd.DataFrame(fallback_data)
+            fallback_recipes = create_fallback_data()
+            recipes_df = pd.DataFrame(fallback_recipes)
             
-            # Oszlopok normalizálása
-            recipes_df['id'] = recipes_df.get('recipeid', range(len(recipes_df)))
-            recipes_df['name'] = recipes_df.get('title', 'Névtelen recept')
-            recipes_df['ingredients_text'] = recipes_df.get('ingredients', '')
-            recipes_df['instructions'] = recipes_df.get('instructions', '')
-            recipes_df['esi'] = pd.to_numeric(recipes_df.get('ESI', 0), errors='coerce').fillna(0)
-            recipes_df['hsi'] = pd.to_numeric(recipes_df.get('HSI', 0), errors='coerce').fillna(0)
-            recipes_df['ppi'] = pd.to_numeric(recipes_df.get('PPI', 0), errors='coerce').fillna(0)
-            recipes_df['category'] = recipes_df.get('category', 'Egyéb')
-            recipes_df['image'] = recipes_df.get('images', '')
+            # Gyors normalizálás
+            recipes_df['id'] = recipes_df['recipeid']
+            recipes_df['name'] = recipes_df['title']
+            recipes_df['ingredients_text'] = recipes_df['ingredients']
+            recipes_df['instructions'] = recipes_df['instructions']
+            recipes_df['esi'] = recipes_df['ESI']
+            recipes_df['hsi'] = recipes_df['HSI'] 
+            recipes_df['ppi'] = recipes_df['PPI']
+            recipes_df['category'] = recipes_df['category']
+            recipes_df['image'] = recipes_df['images']
             
             # TF-IDF
-            vectorizer = TfidfVectorizer(max_features=1000, stop_words=None, lowercase=True, token_pattern=r'\b\w+\b')
-            tfidf_matrix = vectorizer.fit_transform(recipes_df['ingredients_text'].fillna(''))
+            vectorizer = TfidfVectorizer(max_features=100, stop_words=None, lowercase=True, token_pattern=r'\b\w+\b')
+            tfidf_matrix = vectorizer.fit_transform(recipes_df['ingredients_text'])
             
-            print(f"✅ DEBUG: Fallback sikeres! Receptek: {len(recipes_df)}")
+            debug_log("✅ DEBUG: Fallback sikeres!")
             return True
             
         except Exception as fallback_error:
-            print(f"❌ DEBUG: Fallback is sikertelen: {fallback_error}")
+            debug_log(f"❌ DEBUG: Fallback is hibás: {str(fallback_error)}")
             return False
 
 def get_user_group(user_id):
@@ -266,29 +257,27 @@ def log_behavior(user_id, action, data=None):
         }
         behavior_data.append(behavior_entry)
         
-        # Memory management
         if len(behavior_data) > 10000:
             behavior_data[:5000] = []
             
     except Exception as e:
-        print(f"❌ DEBUG: Hiba a behavior logging-nál: {e}")
+        debug_log(f"❌ DEBUG: Behavior logging hiba: {e}")
 
 def get_recommendations(recipe_id, n=5):
     """Content-based ajánlások hibrid algoritmussal"""
     try:
         if recipes_df is None or tfidf_matrix is None:
-            print("❌ DEBUG: Hiányzó adatok az ajánlásokhoz")
+            debug_log("❌ DEBUG: Hiányzó adatok az ajánlásokhoz")
             return []
         
         recipe_idx = recipes_df[recipes_df['id'] == recipe_id].index
         if len(recipe_idx) == 0:
-            print(f"❌ DEBUG: Nem található recept ID: {recipe_id}")
+            debug_log(f"❌ DEBUG: Nem található recept ID: {recipe_id}")
             return []
         
         recipe_idx = recipe_idx[0]
-        print(f"🎯 DEBUG: Ajánlások generálása recipe #{recipe_id} alapján (index: {recipe_idx})")
         
-        # Cosine similarity számítás
+        # Cosine similarity
         cosine_sim = cosine_similarity(tfidf_matrix[recipe_idx:recipe_idx+1], tfidf_matrix).flatten()
         
         # Hibrid scoring
@@ -299,10 +288,7 @@ def get_recommendations(recipe_id, n=5):
         hsi_norm = recipes_df['hsi'] / max_hsi
         sustainability_score = (esi_norm + hsi_norm) / 2
         
-        # Kombinált pontszám
         hybrid_scores = 0.6 * cosine_sim + 0.4 * sustainability_score
-        
-        # Top N ajánlás
         similar_indices = hybrid_scores.argsort()[::-1][1:n+1]
         
         recommendations = []
@@ -321,11 +307,10 @@ def get_recommendations(recipe_id, n=5):
                     'ingredients': str(rec['ingredients_text'])
                 })
         
-        print(f"✅ DEBUG: {len(recommendations)} ajánlás generálva")
         return recommendations
         
     except Exception as e:
-        print(f"❌ DEBUG: Hiba az ajánlások generálásánál: {e}")
+        debug_log(f"❌ DEBUG: Ajánlás hiba: {e}")
         return []
 
 def generate_explanation(recipe, similarity_score):
@@ -353,11 +338,11 @@ def generate_explanation(recipe, similarity_score):
             explanations.append("🥗 Vegetáriánus-barát választás")
         
     except Exception as e:
-        print(f"❌ DEBUG: Hiba a magyarázat generálásánál: {e}")
+        debug_log(f"❌ DEBUG: Magyarázat hiba: {e}")
     
     return explanations
 
-# HTML Template
+# HTML Template (egyszerűsített)
 TEMPLATE_BASE = """
 <!DOCTYPE html>
 <html lang="hu">
@@ -368,69 +353,23 @@ TEMPLATE_BASE = """
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #f8f9fa; }
-        .recipe-card { 
-            margin-bottom: 1rem; 
-            cursor: pointer; 
-            transition: all 0.3s;
-            border: none;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .recipe-card:hover { 
-            transform: translateY(-3px); 
-            box-shadow: 0 6px 12px rgba(0,0,0,0.15); 
-        }
-        .score-badge { 
-            margin: 0.2rem; 
-            padding: 0.4rem 0.8rem; 
-            border-radius: 20px; 
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
+        .recipe-card { margin-bottom: 1rem; cursor: pointer; transition: all 0.3s; border: none; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .recipe-card:hover { transform: translateY(-3px); box-shadow: 0 6px 12px rgba(0,0,0,0.15); }
+        .score-badge { margin: 0.2rem; padding: 0.4rem 0.8rem; border-radius: 20px; font-size: 0.85rem; font-weight: 600; }
         .score-esi { background: linear-gradient(135deg, #e3f2fd, #bbdefb); color: #1565c0; }
         .score-hsi { background: linear-gradient(135deg, #f3e5f5, #e1bee7); color: #6a1b9a; }
         .score-ppi { background: linear-gradient(135deg, #fff3e0, #ffe0b2); color: #ef6c00; }
-        .explanation { 
-            background: linear-gradient(135deg, #e8f5e8, #c8e6c9);
-            border-left: 4px solid #4caf50; 
-            padding: 0.8rem; 
-            margin: 0.8rem 0;
-            border-radius: 0 8px 8px 0;
-        }
-        .group-indicator { 
-            position: fixed; 
-            top: 15px; 
-            right: 15px; 
-            padding: 0.6rem 1rem; 
-            border-radius: 25px; 
-            font-size: 0.9rem;
-            font-weight: bold;
-            z-index: 1000;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
+        .explanation { background: linear-gradient(135deg, #e8f5e8, #c8e6c9); border-left: 4px solid #4caf50; padding: 0.8rem; margin: 0.8rem 0; border-radius: 0 8px 8px 0; }
+        .group-indicator { position: fixed; top: 15px; right: 15px; padding: 0.6rem 1rem; border-radius: 25px; font-size: 0.9rem; font-weight: bold; z-index: 1000; box-shadow: 0 2px 8px rgba(0,0,0,0.2); }
         .group-control { background: linear-gradient(135deg, #f44336, #d32f2f); color: white; }
         .group-scores_visible { background: linear-gradient(135deg, #ff9800, #f57c00); color: white; }
         .group-explanations { background: linear-gradient(135deg, #4caf50, #388e3c); color: white; }
-        .search-section { 
-            background: white; 
-            padding: 2rem; 
-            border-radius: 15px; 
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-            margin-bottom: 2rem;
-        }
-        .header { 
-            text-align: center; 
-            margin-bottom: 2rem;
-            background: linear-gradient(135deg, #4caf50, #81c784);
-            color: white;
-            padding: 2rem;
-            border-radius: 15px;
-        }
+        .search-section { background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+        .header { text-align: center; margin-bottom: 2rem; background: linear-gradient(135deg, #4caf50, #81c784); color: white; padding: 2rem; border-radius: 15px; }
     </style>
 </head>
 <body>
-    <div class="group-indicator group-{{ group }}">
-        {{ group.upper() }} Csoport
-    </div>
+    <div class="group-indicator group-{{ group }}">{{ group.upper() }} Csoport</div>
     
     <div class="container mt-4">
         <div class="header">
@@ -444,9 +383,7 @@ TEMPLATE_BASE = """
                     <input type="text" class="form-control" name="query" 
                            placeholder="Keresés összetevők alapján (pl. paradicsom, mozzarella)..." 
                            value="{{ query or '' }}">
-                    <button class="btn btn-success" type="submit">
-                        🔍 Keresés
-                    </button>
+                    <button class="btn btn-success" type="submit">🔍 Keresés</button>
                 </div>
             </form>
         </div>
@@ -462,9 +399,7 @@ TEMPLATE_BASE = """
             <div class="col-md-6 col-lg-4">
                 <div class="card recipe-card" onclick="selectRecipe({{ recipe.id }})">
                     {% if recipe.image and recipe.image != '' %}
-                    <img src="{{ recipe.image }}" class="card-img-top" 
-                         style="height: 200px; object-fit: cover;" 
-                         onerror="this.style.display='none'">
+                    <img src="{{ recipe.image }}" class="card-img-top" style="height: 200px; object-fit: cover;" onerror="this.style.display='none'">
                     {% endif %}
                     <div class="card-body">
                         <h5 class="card-title">{{ recipe.name }}</h5>
@@ -492,9 +427,7 @@ TEMPLATE_BASE = """
                         {% endif %}
                         
                         {% if recipe.similarity %}
-                        <small class="text-success">
-                            <strong>Hasonlóság: {{ (recipe.similarity * 100) | round }}%</strong>
-                        </small>
+                        <small class="text-success"><strong>Hasonlóság: {{ (recipe.similarity * 100) | round }}%</strong></small>
                         {% endif %}
                     </div>
                 </div>
@@ -521,12 +454,8 @@ TEMPLATE_BASE = """
             <a href="/random" class="btn btn-outline-success me-2">🎲 Véletlenszerű recept</a>
             <a href="/analytics" class="btn btn-outline-info me-2">📊 Statisztikák</a>
             <a href="/status" class="btn btn-outline-secondary me-2">ℹ️ Rendszer állapot</a>
-            <a href="/export-data" class="btn btn-outline-primary">💾 Adatok exportálása</a>
+            <a href="/debug" class="btn btn-outline-warning me-2">🔍 Debug info</a>
         </div>
-        
-        <footer class="mt-5 text-center text-muted">
-            <small>GreenRec - Fenntartható Receptajánló Kutatás | Powered by Heroku</small>
-        </footer>
     </div>
     
     <script>
@@ -534,24 +463,16 @@ TEMPLATE_BASE = """
             fetch('/api/behavior', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    action: 'recipe_click',
-                    recipe_id: recipeId
-                })
+                body: JSON.stringify({ action: 'recipe_click', recipe_id: recipeId })
             }).catch(e => console.log('Tracking error:', e));
             
-            setTimeout(() => {
-                window.location.href = '/recommend/' + recipeId;
-            }, 100);
+            setTimeout(() => { window.location.href = '/recommend/' + recipeId; }, 100);
         }
         
         fetch('/api/behavior', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({
-                action: 'page_view',
-                page: window.location.pathname
-            })
+            body: JSON.stringify({ action: 'page_view', page: window.location.pathname })
         }).catch(e => console.log('Tracking error:', e));
     </script>
 </body>
@@ -568,13 +489,10 @@ def index():
         group = get_user_group(user_id)
         log_behavior(user_id, 'page_visit', {'page': 'index'})
         
-        return render_template_string(TEMPLATE_BASE, 
-                                    group=group, 
-                                    recipes=None, 
-                                    title="Kezdőlap")
+        return render_template_string(TEMPLATE_BASE, group=group, recipes=None, title="Kezdőlap")
     except Exception as e:
-        print(f"❌ DEBUG: Hiba az index oldalon: {e}")
-        return f"<h3>❌ Hiba történt: {e}</h3><a href='/status'>Rendszer állapot ellenőrzése</a>"
+        debug_log(f"❌ DEBUG: Index hiba: {e}")
+        return f"<h3>❌ Hiba: {e}</h3><a href='/status'>Status</a>"
 
 @app.route('/search', methods=['POST'])
 def search():
@@ -582,7 +500,7 @@ def search():
         user_id = session.get('user_id')
         query = request.form.get('query', '').strip()
         
-        print(f"🔍 DEBUG: Keresési kérés: '{query}' - User: {user_id}")
+        debug_log(f"🔍 DEBUG: Keresés: '{query}'")
         
         if not query:
             return redirect('/')
@@ -590,16 +508,14 @@ def search():
         log_behavior(user_id, 'search', {'query': query})
         
         if recipes_df is None:
-            print("❌ DEBUG: recipes_df is None!")
-            return "❌ Adatok nem elérhetők. <a href='/status'>Rendszer állapot ellenőrzése</a>"
+            debug_log("❌ DEBUG: recipes_df is None a keresésben!")
+            return "❌ Adatok nem elérhetők. <a href='/debug'>Debug info</a>"
         
-        print(f"📊 DEBUG: Keresés a {len(recipes_df)} receptben...")
-        
-        # Keresés az összetevőkben
+        # Keresés
         mask = recipes_df['ingredients_text'].str.contains(query, case=False, na=False, regex=False)
         found_recipes = recipes_df[mask].head(12)
         
-        print(f"📋 DEBUG: {len(found_recipes)} találat")
+        debug_log(f"📋 DEBUG: {len(found_recipes)} találat")
         
         group = get_user_group(user_id)
         results = []
@@ -626,8 +542,6 @@ def search():
             
             results.append(recipe_data)
         
-        print(f"✅ DEBUG: {len(results)} eredmény visszaadva")
-        
         return render_template_string(TEMPLATE_BASE,
                                     group=group,
                                     recipes=results,
@@ -635,18 +549,14 @@ def search():
                                     title=f"Keresési eredmények: '{query}'")
                                     
     except Exception as e:
-        print(f"❌ DEBUG: Hiba a keresésben: {e}")
-        import traceback
-        print(f"🔍 DEBUG: Search traceback: {traceback.format_exc()}")
-        return f"<h3>❌ Keresési hiba: {e}</h3><a href='/'>Vissza a főoldalra</a>"
+        debug_log(f"❌ DEBUG: Keresési hiba: {e}")
+        return f"<h3>❌ Keresési hiba: {e}</h3><a href='/'>Vissza</a>"
 
 @app.route('/recommend/<int:recipe_id>')
 def recommend(recipe_id):
     try:
         user_id = session.get('user_id')
         log_behavior(user_id, 'get_recommendations', {'recipe_id': recipe_id})
-        
-        print(f"🎯 DEBUG: Ajánlások kérése recipe ID: {recipe_id}")
         
         recommendations = get_recommendations(recipe_id, n=6)
         group = get_user_group(user_id)
@@ -666,8 +576,8 @@ def recommend(recipe_id):
                                     title=f"Ajánlások a(z) '{original_name}' alapján")
                                     
     except Exception as e:
-        print(f"❌ DEBUG: Hiba az ajánlásokban: {e}")
-        return f"<h3>❌ Ajánlási hiba: {e}</h3><a href='/'>Vissza a főoldalra</a>"
+        debug_log(f"❌ DEBUG: Ajánlási hiba: {e}")
+        return f"<h3>❌ Ajánlási hiba: {e}</h3><a href='/'>Vissza</a>"
 
 @app.route('/random')
 def random_recipe():
@@ -683,7 +593,7 @@ def random_recipe():
         return redirect(f'/recommend/{random_id}')
         
     except Exception as e:
-        print(f"❌ DEBUG: Hiba a random receptnél: {e}")
+        debug_log(f"❌ DEBUG: Random hiba: {e}")
         return redirect('/')
 
 @app.route('/api/behavior', methods=['POST'])
@@ -699,7 +609,7 @@ def api_behavior():
         return jsonify({'status': 'error', 'message': 'Invalid data'}), 400
         
     except Exception as e:
-        print(f"❌ DEBUG: Hiba a behavior API-ban: {e}")
+        debug_log(f"❌ DEBUG: Behavior API hiba: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 @app.route('/analytics')
@@ -756,8 +666,8 @@ def analytics():
         return html
         
     except Exception as e:
-        print(f"❌ DEBUG: Hiba az analytics-ben: {e}")
-        return f"<div class='container mt-4'><h3>❌ Analytics hiba: {e}</h3><a href='/'>Vissza a főoldalra</a></div>"
+        debug_log(f"❌ DEBUG: Analytics hiba: {e}")
+        return f"<div class='container mt-4'><h3>❌ Analytics hiba: {e}</h3></div>"
 
 @app.route('/export-data')
 def export_data():
@@ -768,15 +678,86 @@ def export_data():
             'behaviors': behavior_data[-1000:],
             'metadata': {
                 'recipes_count': len(recipes_df) if recipes_df is not None else 0,
-                'app_version': '1.0.0-heroku-debug',
+                'app_version': '1.0.0-heroku-logging',
                 'deployment': 'heroku'
             }
         }
         return jsonify(export)
         
     except Exception as e:
-        print(f"❌ DEBUG: Hiba az export-nál: {e}")
+        debug_log(f"❌ DEBUG: Export hiba: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/debug')
+def debug():
+    """Debug információk megjelenítése"""
+    try:
+        debug_info = {
+            'load_debug_messages': load_debug_messages[-50:],  # Utolsó 50 üzenet
+            'recipes_loaded': recipes_df is not None,
+            'recipes_count': len(recipes_df) if recipes_df is not None else 0,
+            'tfidf_ready': tfidf_matrix is not None,
+            'working_directory': os.getcwd(),
+            'files_in_directory': os.listdir(os.getcwd()),
+            'json_file_exists': os.path.exists('greenrec_dataset.json'),
+            'json_file_size': os.path.getsize('greenrec_dataset.json') if os.path.exists('greenrec_dataset.json') else 0
+        }
+        
+        html = f"""
+        <div class='container mt-4'>
+            <h2>🔍 GreenRec Debug Information</h2>
+            
+            <div class='row mt-4'>
+                <div class='col-12'>
+                    <h4>📋 Debug üzenetek:</h4>
+                    <div class='alert alert-info'>
+                        <pre style='max-height: 400px; overflow-y: auto;'>
+"""
+        
+        for msg in debug_info['load_debug_messages']:
+            html += f"{msg}\n"
+        
+        html += f"""
+                        </pre>
+                    </div>
+                </div>
+            </div>
+            
+            <div class='row mt-4'>
+                <div class='col-md-6'>
+                    <h4>📊 Rendszer állapot:</h4>
+                    <ul class='list-group'>
+                        <li class='list-group-item'>Receptek betöltve: {'✅' if debug_info['recipes_loaded'] else '❌'}</li>
+                        <li class='list-group-item'>Receptek száma: {debug_info['recipes_count']}</li>
+                        <li class='list-group-item'>TF-IDF kész: {'✅' if debug_info['tfidf_ready'] else '❌'}</li>
+                        <li class='list-group-item'>JSON fájl létezik: {'✅' if debug_info['json_file_exists'] else '❌'}</li>
+                        <li class='list-group-item'>JSON fájl mérete: {debug_info['json_file_size']} byte</li>
+                    </ul>
+                </div>
+                <div class='col-md-6'>
+                    <h4>📁 Fájlok:</h4>
+                    <ul class='list-group' style='max-height: 300px; overflow-y: auto;'>
+"""
+        
+        for file in debug_info['files_in_directory']:
+            html += f"<li class='list-group-item'>{file}</li>"
+        
+        html += f"""
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <a href="/" class="btn btn-success me-2">🏠 Vissza a főoldalra</a>
+                <a href="/status" class="btn btn-info me-2">📊 Status JSON</a>
+            </div>
+        </div>
+        """
+        
+        return html
+        
+    except Exception as e:
+        return f"<h3>Debug hiba: {e}</h3>"
 
 @app.route('/status')
 def status():
@@ -787,21 +768,25 @@ def status():
             'viselkedesi_adatok': len(behavior_data),
             'algoritmus_kesz': tfidf_matrix is not None,
             'utolso_frissites': datetime.now().isoformat(),
-            'deployment': 'heroku-debug',
+            'deployment': 'heroku-logging',
             'python_version': os.sys.version,
             'flask_version': '2.3.3',
+            'debug_messages_count': len(load_debug_messages),
             'debug_info': {
                 'working_directory': os.getcwd(),
                 'files_in_directory': os.listdir(os.getcwd()) if os.path.exists(os.getcwd()) else 'N/A',
                 'recipes_df_columns': list(recipes_df.columns) if recipes_df is not None else 'N/A',
-                'tfidf_shape': str(tfidf_matrix.shape) if tfidf_matrix is not None else 'N/A'
+                'tfidf_shape': str(tfidf_matrix.shape) if tfidf_matrix is not None else 'N/A',
+                'json_file_exists': os.path.exists('greenrec_dataset.json'),
+                'json_file_size': os.path.getsize('greenrec_dataset.json') if os.path.exists('greenrec_dataset.json') else 0,
+                'last_debug_messages': load_debug_messages[-10:] if load_debug_messages else []
             }
         }
         
         return jsonify(status_info)
         
     except Exception as e:
-        print(f"❌ DEBUG: Hiba a status-nál: {e}")
+        debug_log(f"❌ DEBUG: Status hiba: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/health')
@@ -832,15 +817,18 @@ if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') != 'production'
     
-    print("🚀 GreenRec DEBUG verzió indítása...")
-    print(f"🌐 Port: {port}")
-    print(f"🔧 Debug mód: {debug}")
+    debug_log("🚀 GreenRec LOGGING verzió indítása...")
+    debug_log(f"🌐 Port: {port}")
+    debug_log(f"🔧 Debug mód: {debug}")
     
     # Receptek betöltése
-    if load_recipes():
-        print("✅ Rendszer kész!")
-        print("🌐 Heroku URL-en elérhető")
+    load_success = load_recipes()
+    if load_success:
+        debug_log("✅ Alkalmazás kész!")
+        debug_log("🌐 Heroku URL-en elérhető")
     else:
-        print("⚠️ Receptek betöltése részben sikertelen, de fallback adatokkal folytatjuk")
+        debug_log("⚠️ Receptek betöltése sikertelen!")
+    
+    debug_log(f"📊 Végleges állapot: recipes_df={recipes_df is not None}, tfidf_matrix={tfidf_matrix is not None}")
     
     app.run(debug=debug, host='0.0.0.0', port=port)
