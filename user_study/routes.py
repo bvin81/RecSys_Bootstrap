@@ -13,41 +13,93 @@ from datetime import datetime
 user_study_bp = Blueprint('user_study', __name__, url_prefix='')
 
 # Simple data storage
-recipes_data = [
-    {
-        'id': 'recipe_001', 'name': '🥗 Mediterrán Saláta',
-        'description': 'Friss zöldségek olivaolajjal',
-        'ingredients': ['saláta', 'paradicsom', 'uborka', 'olívaolaj'],
-        'category': 'Saláták', 'ESI': 15, 'HSI': 95, 'PPI': 78
-    },
-    {
-        'id': 'recipe_002', 'name': '🍲 Lencse Curry',
-        'description': 'Fűszeres lencse curry kókusztejjel',
-        'ingredients': ['vörös lencse', 'kókusztej', 'curry', 'hagyma'],
-        'category': 'Főételek', 'ESI': 12, 'HSI': 88, 'PPI': 82
-    },
-    {
-        'id': 'recipe_003', 'name': '🥕 Sárgarépa Leves',
-        'description': 'Krémes sárgarépa leves gyömbérrel',
-        'ingredients': ['sárgarépa', 'gyömbér', 'kókusztej', 'hagyma'],
-        'category': 'Levesek', 'ESI': 18, 'HSI': 92, 'PPI': 75
-    },
-    {
-        'id': 'recipe_004', 'name': '🍝 Teljes Kiőrlésű Tészta',
-        'description': 'Teljes kiőrlésű tészta zöldségekkel',
-        'ingredients': ['teljes kiőrlésű tészta', 'brokkoli', 'paprika'],
-        'category': 'Főételek', 'ESI': 22, 'HSI': 85, 'PPI': 88
-    },
-    {
-        'id': 'recipe_005', 'name': '🥤 Zöld Smoothie',
-        'description': 'Spenótos-banános smoothie',
-        'ingredients': ['spenót', 'banán', 'alma', 'mandula tej'],
-        'category': 'Italok', 'ESI': 10, 'HSI': 90, 'PPI': 70
-    }
-]
+# =============================================================================
+# JSON RECIPE LOADER
+# =============================================================================
+
+class RecipeLoader:
+    def __init__(self):
+        self.recipes = []
+        self.loaded = False
+        self.load_recipes()
+    
+    def load_recipes(self):
+        json_files = [
+            'greenrec_dataset.json',
+            'data/greenrec_dataset.json', 
+            'hungarian_recipes.json',
+            'data/hungarian_recipes.json',
+            'recipes.json'
+        ]
+        
+        for json_file in json_files:
+            if os.path.exists(json_file):
+                try:
+                    print(f"📋 Loading recipes from: {json_file}")
+                    with open(json_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    
+                    if isinstance(data, list):
+                        self.recipes = data[:15]  # Első 15 recept
+                    elif isinstance(data, dict):
+                        self.recipes = data.get('recipes', data.get('data', []))[:15]
+                    
+                    if self.recipes:
+                        print(f"✅ Loaded {len(self.recipes)} recipes from {json_file}")
+                        self.loaded = True
+                        return
+                        
+                except Exception as e:
+                    print(f"❌ Error loading {json_file}: {e}")
+                    continue
+        
+        # Fallback to sample data
+        print("⚠️ No JSON found, using sample recipes")
+        self.create_sample_recipes()
+    
+    def create_sample_recipes(self):
+        self.recipes = [
+            {
+                'id': 'recipe_001', 'name': '🥗 Mediterrán Saláta',
+                'description': 'Friss zöldségek olivaolajjal',
+                'ingredients': ['saláta', 'paradicsom', 'uborka', 'olívaolaj'],
+                'category': 'Saláták', 'ESI': 15, 'HSI': 95, 'PPI': 78
+            },
+            {
+                'id': 'recipe_002', 'name': '🍲 Lencse Curry',
+                'description': 'Fűszeres lencse curry kókusztejjel',
+                'ingredients': ['vörös lencse', 'kókusztej', 'curry', 'hagyma'],
+                'category': 'Főételek', 'ESI': 12, 'HSI': 88, 'PPI': 82
+            },
+            {
+                'id': 'recipe_003', 'name': '🥕 Sárgarépa Leves',
+                'description': 'Krémes sárgarépa leves gyömbérrel',
+                'ingredients': ['sárgarépa', 'gyömbér', 'kókusztej', 'hagyma'],
+                'category': 'Levesek', 'ESI': 18, 'HSI': 92, 'PPI': 75
+            },
+            {
+                'id': 'recipe_004', 'name': '🍝 Teljes Kiőrlésű Tészta',
+                'description': 'Teljes kiőrlésű tészta zöldségekkel',
+                'ingredients': ['teljes kiőrlésű tészta', 'brokkoli', 'paprika'],
+                'category': 'Főételek', 'ESI': 22, 'HSI': 85, 'PPI': 88
+            },
+            {
+                'id': 'recipe_005', 'name': '🥤 Zöld Smoothie',
+                'description': 'Spenótos-banános smoothie',
+                'ingredients': ['spenót', 'banán', 'alma', 'mandula tej'],
+                'category': 'Italok', 'ESI': 10, 'HSI': 90, 'PPI': 70
+            }
+        ]
+        self.loaded = False
+
+# Initialize recipe loader
+recipe_loader = RecipeLoader()
 
 users_db = {}
 ratings_db = {}
+
+print(f"✅ Recipe system ready: {len(recipe_loader.recipes)} recipes loaded")
+print(f"📊 Data source: {'JSON file' if recipe_loader.loaded else 'Sample data'}")
 
 @user_study_bp.route('/welcome')
 def welcome():
@@ -67,7 +119,8 @@ def welcome():
         <div class="card">
             <h1>🌱 Fenntartható Receptajánló</h1>
             <p><strong>GreenRec működik!</strong></p>
-            <p>📋 {len(recipes_data)} recept betöltve</p>
+            <p>📋 {len(recipe_loader.recipes)} recept betöltve</p>
+            <p>📊 Forrás: {'JSON fájl' if recipe_loader.loaded else 'Minta adatok'}</p>
             <p>👥 {len(users_db)} felhasználó regisztrálva</p>
             
             <h3>🚀 Csatlakozás:</h3>
@@ -121,10 +174,10 @@ def study():
     
     # Simple search
     if search_query:
-        filtered_recipes = [r for r in recipes_data if search_query.lower() in r['name'].lower() or 
-                          any(search_query.lower() in ing.lower() for ing in r['ingredients'])]
+        filtered_recipes = [r for r in recipe_loader.recipes if search_query.lower() in r['name'].lower() or 
+                      any(search_query.lower() in str(ing).lower() for ing in r.get('ingredients', []))]
     else:
-        filtered_recipes = recipes_data
+        filtered_recipes = recipe_loader.recipes
     
     recipe_cards = ''
     for recipe in filtered_recipes[:6]:
