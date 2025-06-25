@@ -1,7 +1,7 @@
-# app.py - TELJES JAVÍTOTT VERZIÓ
+# app.py - TELJES JAVÍTOTT VERZIÓ - MINDEN SYNTAX ERROR JAVÍTVA
 """
 GreenRec - Fenntartható Receptajánló Rendszer
-MINDEN SYNTAX ERROR JAVÍTVA
+TELJES MŰKÖDŐKÉPES VERZIÓ
 """
 
 from flask import Flask, render_template_string, request, session, jsonify, redirect
@@ -629,7 +629,7 @@ def status():
 def health():
     return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
 
-# Error handlers - JAVÍTOTT
+# Error handlers - TELJES JAVÍTÁS
 @app.errorhandler(404)
 def not_found(error):
     return """
@@ -639,3 +639,41 @@ def not_found(error):
         <a href='/' class='btn btn-success'>🏠 Vissza a főoldalra</a>
     </div>
     """, 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return """
+    <div class='container mt-4 text-center'>
+        <h3>❌ Szerver hiba</h3>
+        <p>Valami probléma merült fel. Próbálja újra később.</p>
+        <a href='/' class='btn btn-success'>🏠 Vissza a főoldalra</a>
+        <a href='/status' class='btn btn-info'>📊 Status</a>
+    </div>
+    """, 500
+
+# ✅ KRITIKUS: Automatikus inicializálás app indításkor!
+debug_log("🚀 STARTUP: Flask app inicializálása...")
+debug_log("🔄 STARTUP: load_recipes() automatikus hívás...")
+initialization_success = load_recipes()
+debug_log(f"📊 STARTUP: Inicializálás eredménye: {initialization_success}")
+debug_log(f"📊 STARTUP: recipes_df állapot: {recipes_df is not None}")
+debug_log(f"📊 STARTUP: tfidf_matrix állapot: {tfidf_matrix is not None}")
+
+# Main application runner - VÉGSŐ JAVÍTÁS
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV') != 'production'
+    
+    debug_log("🚀 MAIN: Alkalmazás indítása...")
+    debug_log(f"🌐 MAIN: Port: {port}")
+    debug_log(f"🔧 MAIN: Debug mód: {debug}")
+    
+    # Ellenőrzés
+    if recipes_df is not None:
+        debug_log("✅ MAIN: Receptek sikeresen betöltve!")
+        debug_log("🌐 MAIN: Alkalmazás kész!")
+    else:
+        debug_log("⚠️ MAIN: Receptek betöltése sikertelen!")
+    
+    # VÉGLEGESEN JAVÍTOTT: Csak az app.run()
+    app.run(debug=debug, host='0.0.0.0', port=port)
