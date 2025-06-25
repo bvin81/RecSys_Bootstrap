@@ -887,4 +887,412 @@ const GreenRec = {
                 tooltip.style.zIndex = '9999';
                 tooltip.style.pointerEvents = 'none';
                 
-                document.body
+                document.body.appendChild(tooltip);
+                
+                const rect = e.target.getBoundingClientRect();
+                tooltip.style.top = (rect.top - tooltip.offsetHeight - 5) + 'px';
+                tooltip.style.left = (rect.left + rect.width / 2 - tooltip.offsetWidth / 2) + 'px';
+                
+                e.target._tooltip = tooltip;
+            });
+            
+            element.addEventListener('mouseleave', (e) => {
+                if (e.target._tooltip) {
+                    e.target._tooltip.remove();
+                    delete e.target._tooltip;
+                }
+            });
+        });
+    },
+    
+    // Lazy loading for images
+    setupLazyLoading() {
+        if ('IntersectionObserver' in window) {
+            const imageObserver = new IntersectionObserver((entries, observer) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const img = entry.target;
+                        
+                        if (img.dataset.src) {
+                            img.src = img.dataset.src;
+                            img.classList.remove('lazy');
+                            observer.unobserve(img);
+                        }
+                    }
+                });
+            });
+            
+            document.querySelectorAll('img[data-src]').forEach(img => {
+                img.classList.add('lazy');
+                imageObserver.observe(img);
+            });
+        }
+    },
+    
+    // Performance monitoring
+    setupPerformanceMonitoring() {
+        // Page load performance
+        window.addEventListener('load', () => {
+            if ('performance' in window) {
+                const loadTime = performance.timing.loadEventEnd - performance.timing.navigationStart;
+                console.log(`🚀 Teljes betöltési idő: ${loadTime}ms`);
+                
+                // Send to analytics if needed
+                this.trackPerformance('page_load', loadTime);
+            }
+        });
+        
+        // Monitor API call times
+        const originalFetch = window.fetch;
+        window.fetch = async (...args) => {
+            const startTime = performance.now();
+            try {
+                const response = await originalFetch(...args);
+                const endTime = performance.now();
+                const duration = endTime - startTime;
+                
+                console.log(`🌐 API call to ${args[0]} took ${duration.toFixed(2)}ms`);
+                this.trackPerformance('api_call', duration, args[0]);
+                
+                return response;
+            } catch (error) {
+                const endTime = performance.now();
+                const duration = endTime - startTime;
+                
+                console.error(`❌ API call to ${args[0]} failed after ${duration.toFixed(2)}ms:`, error);
+                this.trackPerformance('api_error', duration, args[0]);
+                
+                throw error;
+            }
+        };
+    },
+    
+    // Track performance metrics
+    trackPerformance(eventType, duration, details = null) {
+        // Simple performance tracking - could be sent to analytics service
+        const performanceData = {
+            type: eventType,
+            duration: duration,
+            timestamp: new Date().toISOString(),
+            userAgent: navigator.userAgent,
+            url: window.location.href,
+            details: details
+        };
+        
+        // Store in localStorage for debugging (optional)
+        try {
+            const perfHistory = JSON.parse(localStorage.getItem('greenrec_perf') || '[]');
+            perfHistory.push(performanceData);
+            
+            // Keep only last 50 entries
+            if (perfHistory.length > 50) {
+                perfHistory.splice(0, perfHistory.length - 50);
+            }
+            
+            localStorage.setItem('greenrec_perf', JSON.stringify(perfHistory));
+        } catch (e) {
+            // localStorage might not be available
+            console.warn('Could not store performance data:', e);
+        }
+    },
+    
+    // Utility functions
+    utils: {
+        // Debounce function
+        debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        },
+        
+        // Throttle function
+        throttle(func, limit) {
+            let inThrottle;
+            return function() {
+                const args = arguments;
+                const context = this;
+                if (!inThrottle) {
+                    func.apply(context, args);
+                    inThrottle = true;
+                    setTimeout(() => inThrottle = false, limit);
+                }
+            };
+        },
+        
+        // Format numbers
+        formatNumber(num, decimals = 0) {
+            return new Intl.NumberFormat('hu-HU', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            }).format(num);
+        },
+        
+        // Format dates
+        formatDate(date, options = {}) {
+            const defaultOptions = {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            };
+            
+            return new Intl.DateTimeFormat('hu-HU', { ...defaultOptions, ...options }).format(new Date(date));
+        },
+        
+        // Get random color
+        getRandomColor() {
+            const colors = Object.values(GreenRec.config.chartColors);
+            return colors[Math.floor(Math.random() * colors.length)];
+        },
+        
+        // Validate email
+        isValidEmail(email) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            return emailRegex.test(email);
+        },
+        
+        // Copy to clipboard
+        async copyToClipboard(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+                GreenRec.showFlashMessage('Vágólapra másolva!', 'success');
+            } catch (err) {
+                console.error('Copy failed:', err);
+                GreenRec.showFlashMessage('Másolás sikertelen', 'error');
+            }
+        },
+        
+        // Generate unique ID
+        generateId(prefix = 'id') {
+            return `${prefix}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        },
+        
+        // Smooth scroll to element
+        scrollToElement(element, offset = 0) {
+            const targetElement = typeof element === 'string' ? document.querySelector(element) : element;
+            if (targetElement) {
+                const targetPosition = targetElement.getBoundingClientRect().top + window.pageYOffset - offset;
+                window.scrollTo({
+                    top: targetPosition,
+                    behavior: 'smooth'
+                });
+            }
+        },
+        
+        // Check if element is in viewport
+        isInViewport(element) {
+            const rect = element.getBoundingClientRect();
+            return (
+                rect.top >= 0 &&
+                rect.left >= 0 &&
+                rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+                rect.right <= (window.innerWidth || document.documentElement.clientWidth)
+            );
+        }
+    },
+    
+    // Advanced features
+    advanced: {
+        // Auto-save functionality
+        setupAutoSave() {
+            let autoSaveTimer;
+            
+            const autoSave = GreenRec.utils.debounce(() => {
+                const unsavedRatings = Object.keys(GreenRec.state.currentRatings);
+                if (unsavedRatings.length > 0) {
+                    console.log('💾 Auto-saving ratings...');
+                    // Implementation would save to server
+                }
+            }, 5000);
+            
+            // Trigger auto-save on rating changes
+            document.addEventListener('ratingChanged', autoSave);
+        },
+        
+        // Keyboard shortcuts
+        setupKeyboardShortcuts() {
+            document.addEventListener('keydown', (e) => {
+                // Ctrl/Cmd + K for search focus
+                if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                    e.preventDefault();
+                    const searchInput = document.querySelector('.search-input');
+                    if (searchInput) {
+                        searchInput.focus();
+                        searchInput.select();
+                    }
+                }
+                
+                // Ctrl/Cmd + Enter for next round
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    const nextRoundBtn = document.querySelector('.next-round-btn');
+                    if (nextRoundBtn && !nextRoundBtn.disabled) {
+                        nextRoundBtn.click();
+                    }
+                }
+                
+                // Number keys 1-5 for rating when recipe card is focused
+                if (/^[1-5]$/.test(e.key)) {
+                    const focusedCard = document.querySelector('.recipe-card:focus-within');
+                    if (focusedCard) {
+                        const stars = focusedCard.querySelectorAll('.star');
+                        const rating = parseInt(e.key);
+                        if (stars[rating - 1]) {
+                            stars[rating - 1].click();
+                        }
+                    }
+                }
+            });
+        },
+        
+        // Offline support
+        setupOfflineSupport() {
+            window.addEventListener('online', () => {
+                GreenRec.showFlashMessage('Kapcsolat helyreállt', 'success');
+            });
+            
+            window.addEventListener('offline', () => {
+                GreenRec.showFlashMessage('Nincs internetkapcsolat - Offline módban működik', 'warning');
+            });
+        },
+        
+        // Export functionality
+        async exportData(format = 'json') {
+            try {
+                const response = await fetch('/api/export-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ format: format })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Export failed');
+                }
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `greenrec_data_${new Date().toISOString().split('T')[0]}.${format}`;
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                GreenRec.showFlashMessage('Adatok exportálva!', 'success');
+            } catch (error) {
+                console.error('Export error:', error);
+                GreenRec.showFlashMessage('Export sikertelen', 'error');
+            }
+        }
+    }
+};
+
+// CSS animations for JavaScript
+const additionalStyles = `
+    @keyframes slideOutRight {
+        from {
+            transform: translateX(0);
+            opacity: 1;
+        }
+        to {
+            transform: translateX(100%);
+            opacity: 0;
+        }
+    }
+    
+    .lazy {
+        opacity: 0;
+        transition: opacity 0.3s;
+    }
+    
+    .lazy.loaded {
+        opacity: 1;
+    }
+    
+    .tooltip {
+        animation: tooltipFadeIn 0.2s ease-out;
+    }
+    
+    @keyframes tooltipFadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(5px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+`;
+
+// Inject additional styles
+const styleSheet = document.createElement('style');
+styleSheet.textContent = additionalStyles;
+document.head.appendChild(styleSheet);
+
+// Initialize application when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => GreenRec.init());
+} else {
+    GreenRec.init();
+}
+
+// Expose GreenRec globally for debugging
+window.GreenRec = GreenRec;
+
+// Service Worker registration (if available)
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', async () => {
+        try {
+            const registration = await navigator.serviceWorker.register('/static/sw.js');
+            console.log('✅ Service Worker registered:', registration);
+        } catch (error) {
+            console.log('❌ Service Worker registration failed:', error);
+        }
+    });
+}
+
+// Error boundary for global error handling
+window.addEventListener('error', (event) => {
+    console.error('❌ Global error:', event.error);
+    
+    // Don't overwhelm user with too many error messages
+    if (!GreenRec.state.hasShownGlobalError) {
+        GreenRec.showFlashMessage('Váratlan hiba történt. Kérjük, frissítse az oldalt.', 'error');
+        GreenRec.state.hasShownGlobalError = true;
+        
+        // Reset flag after 30 seconds
+        setTimeout(() => {
+            GreenRec.state.hasShownGlobalError = false;
+        }, 30000);
+    }
+});
+
+// Unhandled promise rejection handling
+window.addEventListener('unhandledrejection', (event) => {
+    console.error('❌ Unhandled promise rejection:', event.reason);
+    event.preventDefault(); // Prevent default browser behavior
+    
+    if (!GreenRec.state.hasShownPromiseError) {
+        GreenRec.showFlashMessage('Hálózati hiba történt. Kérjük, próbálja újra.', 'error');
+        GreenRec.state.hasShownPromiseError = true;
+        
+        setTimeout(() => {
+            GreenRec.state.hasShownPromiseError = false;
+        }, 30000);
+    }
+});
+
+// Export for module systems
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = GreenRec;
+}
