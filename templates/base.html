@@ -60,13 +60,6 @@
                 <div class="footer-section">
                     <h4>🌱 GreenRec</h4>
                     <p>Fenntartható receptajánló rendszer</p>
-                    {% if session.user_group %}
-                    <p class="footer-user-info">
-                        <span class="group-badge group-{{ session.user_group }}">
-                            {{ get_group_name(session.user_group) }} Csoport
-                        </span>
-                    </p>
-                    {% endif %}
                 </div>
                 
                 <div class="footer-section">
