@@ -153,7 +153,7 @@ class DataManager:
         
         # Kötelező oszlopok ellenőrzése és kiegészítése
         required_columns = {
-            'recipe_id': range(1, len(df) + 1),
+            'recipe_id': list(range(1, len(df) + 1)),  # ← list() hozzáadása
             'name': [f"Recept #{i}" for i in range(1, len(df) + 1)],
             'ingredients': ['alapösszetevők'] * len(df),
             'ESI': [50] * len(df),  # Environmental Score Index
