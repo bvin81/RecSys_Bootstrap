@@ -1,0 +1,55 @@
+<!-- ===== templates/results.html ===== -->
+{% extends "base.html" %}
+
+{% block title %}Ajánlások - GreenRec{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>🌱 Ajánlott receptek</h2>
+        <p class="text-muted">Az alábbi receptek hasonló összetevőket tartalmaznak és fenntarthatóság szempontjából is jók.</p>
+        
+        <div class="row">
+            {% for recipe in recommendations %}
+            <div class="col-12 mb-4">
+                <div class="recipe-card">
+                    <div class="row">
+                        <div class="col-md-8">
+                            <h5>{{ recipe.title }}</h5>
+                            <p><strong>Kategória:</strong> {{ recipe.category }}</p>
+                            <p><strong>Összetevők:</strong> {{ recipe.ingredients[:200] }}{% if recipe.ingredients|length > 200 %}...{% endif %}</p>
+                            
+                            {% if show_scores %}
+                            <div class="mt-3">
+                                <span class="badge bg-success score-badge">Egészség: {{ "%.1f"|format(recipe.hsi) }}</span>
+                                <span class="badge bg-warning score-badge">Környezet: {{ "%.1f"|format(recipe.esi) }}</span>
+                                <span class="badge bg-info score-badge">Népszerűség: {{ "%.1f"|format(recipe.ppi) }}</span>
+                                <span class="badge bg-primary score-badge">Összes: {{ "%.2f"|format(recipe.composite_score) }}</span>
+                            </div>
+                            {% endif %}
+                            
+                            {% if show_explanation and explanations[recipe.id] %}
+                            <div class="explanation-box">
+                                <strong>💡 Miért ajánljuk?</strong><br>
+                                {{ explanations[recipe.id] }}
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <button class="btn btn-outline-success select-recipe-btn" 
+                                    data-recipe-id="{{ recipe.id }}"
+                                    data-recipe-title="{{ recipe.title }}">
+                                Ezt választom
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div class="text-center mt-4">
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Új választás</a>
+        </div>
+    </div>
+</div>
