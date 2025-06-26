@@ -1,39 +1,56 @@
 import os
+import json
 import pandas as pd
 import psycopg2
 from urllib.parse import urlparse
-from sklearn.preprocessing import MinMaxScaler
+import logging
+
+# Logging beállítása
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def get_db_connection():
-    """PostgreSQL kapcsolat létrehozása"""
-    DATABASE_URL = os.environ.get('DATABASE_URL')
-    if DATABASE_URL:
-        # Heroku környezet
-        result = urlparse(DATABASE_URL)
-        conn = psycopg2.connect(
-            dbname=result.path[1:],
-            user=result.username,
-            password=result.password,
-            host=result.hostname,
-            port=result.port,
-            sslmode='require'
-        )
-    else:
-        # Helyi fejlesztés
-        conn = psycopg2.connect(
-            host="localhost",
-            database="greenrec_local",
-            user="postgres",
-            password="password"
-        )
-    return conn
+    """PostgreSQL kapcsolat létrehozása hibakezeléssel"""
+    try:
+        DATABASE_URL = os.environ.get('DATABASE_URL')
+        if DATABASE_URL:
+            # Heroku PostgreSQL URL javítása
+            if DATABASE_URL.startswith('postgres://'):
+                DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+                logger.info("✅ Database URL javítva postgresql://-re")
+            
+            result = urlparse(DATABASE_URL)
+            conn = psycopg2.connect(
+                dbname=result.path[1:],
+                user=result.username,
+                password=result.password,
+                host=result.hostname,
+                port=result.port,
+                sslmode='require'
+            )
+            logger.info("✅ PostgreSQL kapcsolat létrehozva (Heroku)")
+            return conn
+        else:
+            # Helyi fejlesztés
+            conn = psycopg2.connect(
+                host="localhost",
+                database="greenrec_local",
+                user="postgres",
+                password="password"
+            )
+            logger.info("✅ PostgreSQL kapcsolat létrehozva (helyi)")
+            return conn
+    except Exception as e:
+        logger.error(f"❌ Adatbázis kapcsolat hiba: {e}")
+        raise
 
 def create_tables():
     """Adatbázis táblák létrehozása"""
+    logger.info("🔧 Adatbázis táblák létrehozása...")
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Táblák létrehozása
+    # Users tábla
     cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -44,6 +61,7 @@ def create_tables():
         );
     """)
     
+    # Recipes tábla
     cur.execute("""
         CREATE TABLE IF NOT EXISTS recipes (
             id INTEGER PRIMARY KEY,
@@ -58,15 +76,17 @@ def create_tables():
         );
     """)
     
+    # User choices tábla
     cur.execute("""
         CREATE TABLE IF NOT EXISTS user_choices (
             id SERIAL PRIMARY KEY,
             user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
             recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
-            chosen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
     
+    # User interactions tábla (opcionális)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS user_interactions (
             id SERIAL PRIMARY KEY,
@@ -77,195 +97,250 @@ def create_tables():
         );
     """)
     
-    # Indexek létrehozása
+    # Indexek létrehozása a teljesítményért
     cur.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_users_group ON users(group_name);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_user_choices_user_id ON user_choices(user_id);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_user_choices_recipe_id ON user_choices(recipe_id);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_user_interactions_user_id ON user_interactions(user_id);")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_recipes_category ON recipes(category);")
     
     conn.commit()
     cur.close()
     conn.close()
-    print("✅ Adatbázis táblák létrehozva!")
+    logger.info("✅ Adatbázis táblák létrehozva!")
 
-def load_csv_data(csv_file_path):
-    """CSV adatok betöltése és előfeldolgozása"""
+def load_json_data(json_file_path):
+    """JSON adatok betöltése és DataFrame-be konvertálása"""
     try:
-        # CSV beolvasása
-        print(f"📁 CSV beolvasása: {csv_file_path}")
+        logger.info(f"📁 JSON fájl beolvasása: {json_file_path}")
         
-        # Próbáljuk különböző encoding-okkal
-        encodings = ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']
-        df = None
+        # JSON fájl beolvasása
+        with open(json_file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
         
-        for encoding in encodings:
-            try:
-                df = pd.read_csv(csv_file_path, encoding=encoding)
-                print(f"✅ Sikeres beolvasás {encoding} encoding-gal")
-                break
-            except UnicodeDecodeError:
-                continue
+        logger.info(f"📊 JSON betöltve, {len(data)} recept található")
         
-        if df is None:
-            raise Exception("Nem sikerült beolvasni a CSV fájlt")
+        # DataFrame létrehozása
+        df = pd.DataFrame(data)
         
-        print(f"📊 Beolvasva {len(df)} recept")
+        # Oszlopnevek standardizálása és ellenőrzése
+        logger.info(f"📋 Elérhető oszlopok: {list(df.columns)}")
         
-        # Oszlopnevek standardizálása
+        # Oszlopnevek mapping a projektre jellemző nevek alapján
         column_mapping = {
             'recipeid': 'id',
+            'recipe_id': 'id',
             'name': 'title',
+            'recipe_name': 'title',
             'nutri_score': 'hsi',
-            'env_score': 'esi', 
-            'meal_score': 'ppi'
+            'nutrition_score': 'hsi',
+            'health_score': 'hsi',
+            'env_score': 'esi',
+            'environment_score': 'esi',
+            'environmental_score': 'esi',
+            'meal_score': 'ppi',
+            'popularity_score': 'ppi',
+            'pop_score': 'ppi'
         }
         
-        df = df.rename(columns=column_mapping)
+        # Oszlopnevek átnevezése ha szükséges
+        for old_name, new_name in column_mapping.items():
+            if old_name in df.columns:
+                df = df.rename(columns={old_name: new_name})
+                logger.info(f"🔄 Oszlop átnevezve: {old_name} → {new_name}")
         
         # Szükséges oszlopok ellenőrzése
-        required_columns = ['id', 'title', 'hsi', 'esi', 'ppi', 'ingredients']
+        required_columns = ['id', 'title', 'hsi', 'esi', 'ppi']
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
+            logger.error(f"❌ Hiányzó oszlopok: {missing_columns}")
+            logger.info(f"📋 Elérhető oszlopok: {list(df.columns)}")
             raise Exception(f"Hiányzó oszlopok: {missing_columns}")
         
-        # Hiányzó adatok kezelése
-        df = df.dropna(subset=['id', 'title', 'hsi', 'esi', 'ppi'])
+        # Adatok tisztítása
+        original_count = len(df)
+        df = df.dropna(subset=required_columns)
+        logger.info(f"🧹 {original_count - len(df)} sor eltávolítva (hiányzó adatok)")
         
-        # Karakterek javítása (opcionális)
-        df['title'] = df['title'].str.replace('?', 'ő').str.replace('?', 'ű')
-        df['ingredients'] = df['ingredients'].fillna('').str.replace('?', 'ő').str.replace('?', 'ű')
-        df['instructions'] = df['instructions'].fillna('').str.replace('?', 'ő').str.replace('?', 'ű')
+        # Típuskonverziók
+        df['id'] = pd.to_numeric(df['id'], errors='coerce')
+        df['hsi'] = pd.to_numeric(df['hsi'], errors='coerce')
+        df['esi'] = pd.to_numeric(df['esi'], errors='coerce')
+        df['ppi'] = pd.to_numeric(df['ppi'], errors='coerce')
         
-        # URL-ek javítása
-        if 'images' in df.columns:
-            df['images'] = df['images'].str.replace('h?tps', 'https', regex=False)
+        # További NaN-ek eltávolítása a konverzió után
+        df = df.dropna(subset=['id', 'hsi', 'esi', 'ppi'])
         
-        # Kategória alapértelmezett értéke
+        # Alapértelmezett értékek beállítása hiányzó oszlopokhoz
         if 'category' not in df.columns:
-            df['category'] = 'Egyéb'
+            df['category'] = 'Általános'
+        if 'ingredients' not in df.columns:
+            df['ingredients'] = 'Nem elérhető'
+        if 'instructions' not in df.columns:
+            df['instructions'] = 'Nem elérhető'
+        if 'images' not in df.columns:
+            df['images'] = 'https://via.placeholder.com/300x200?text=No+Image'
         
-        df['category'] = df['category'].fillna('Egyéb')
+        # Hiányzó értékek kezelése a nem kötelező oszlopokban
+        df['category'] = df['category'].fillna('Általános')
+        df['ingredients'] = df['ingredients'].fillna('Nem elérhető')
+        df['instructions'] = df['instructions'].fillna('Nem elérhető')
+        df['images'] = df['images'].fillna('https://via.placeholder.com/300x200?text=No+Image')
         
-        print(f"✅ Adatok előfeldolgozva, {len(df)} érvényes recept")
+        logger.info(f"✅ {len(df)} érvényes recept előkészítve az adatbázis számára")
         return df
         
+    except FileNotFoundError:
+        logger.error(f"❌ JSON fájl nem található: {json_file_path}")
+        return None
+    except json.JSONDecodeError as e:
+        logger.error(f"❌ JSON dekódolási hiba: {e}")
+        return None
     except Exception as e:
-        print(f"❌ Hiba a CSV betöltése során: {e}")
+        logger.error(f"❌ JSON betöltési hiba: {e}")
         return None
 
 def insert_recipes_to_db(df):
     """Receptek beszúrása az adatbázisba"""
-    conn = get_db_connection()
-    cur = conn.cursor()
-    
     try:
-        # Meglévő receptek törlése
+        logger.info(f"💾 {len(df)} recept beszúrása az adatbázisba...")
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Régi receptek törlése
         cur.execute("DELETE FROM recipes;")
+        logger.info("🗑️  Régi receptek törölve")
         
-        # Receptek beszúrása
-        insert_query = """
-            INSERT INTO recipes (id, title, hsi, esi, ppi, category, ingredients, instructions, images)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """
-        
-        records_inserted = 0
-        for _, row in df.iterrows():
+        # Új receptek beszúrása
+        insert_count = 0
+        for _, recipe in df.iterrows():
             try:
-                cur.execute(insert_query, (
-                    int(row['id']),
-                    str(row['title'])[:500],  # Limitálás 500 karakterre
-                    float(row['hsi']),
-                    float(row['esi']),
-                    float(row['ppi']),
-                    str(row.get('category', 'Egyéb'))[:100],
-                    str(row.get('ingredients', ''))[:2000],
-                    str(row.get('instructions', ''))[:5000],
-                    str(row.get('images', ''))[:500]
-                ))
-                records_inserted += 1
+                cur.execute("""
+                    INSERT INTO recipes (id, title, hsi, esi, ppi, category, ingredients, instructions, images)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """, (
+                        int(recipe['id']),
+                        str(recipe['title'])[:255],  # Limit title length
+                        float(recipe['hsi']),
+                        float(recipe['esi']),
+                        float(recipe['ppi']),
+                        str(recipe['category'])[:100],  # Limit category length
+                        str(recipe['ingredients']),
+                        str(recipe['instructions']),
+                        str(recipe['images'])
+                    ))
+                insert_count += 1
             except Exception as e:
-                print(f"⚠️  Hiba a recept beszúrásánál (ID: {row.get('id', 'N/A')}): {e}")
+                logger.warning(f"⚠️  Recept beszúrási hiba (ID: {recipe.get('id', 'N/A')}): {e}")
                 continue
         
         conn.commit()
-        print(f"✅ {records_inserted} recept sikeresen beszúrva az adatbázisba!")
-        
-    except Exception as e:
-        print(f"❌ Hiba az adatbázis művelet során: {e}")
-        conn.rollback()
-    finally:
         cur.close()
         conn.close()
+        
+        logger.info(f"✅ {insert_count} recept sikeresen beszúrva az adatbázisba!")
+        
+    except Exception as e:
+        logger.error(f"❌ Adatbázis beszúrási hiba: {e}")
+        raise
 
 def create_sample_data():
-    """Minta adatok létrehozása teszteléshez"""
+    """Minta adatok létrehozása ha nincs JSON fájl"""
+    logger.info("🔧 Minta adatok létrehozása...")
+    
     sample_recipes = [
         {
             'id': 1,
-            'title': 'Mediterrán Saláta',
+            'title': 'Zöldséges quinoa saláta',
             'hsi': 85.5,
             'esi': 45.2,
-            'ppi': 78.3,
-            'category': 'Saláta',
-            'ingredients': 'paradicsom, uborka, olívabogyó, feta sajt, olívaolaj, citrom',
-            'instructions': 'Vágjuk fel a zöldségeket, keverjük össze a feta sajttal és öntsük le az olívaolajjal.',
-            'images': 'https://example.com/mediterranean_salad.jpg'
+            'ppi': 78.0,
+            'category': 'Saláták',
+            'ingredients': 'quinoa, uborka, paradicsom, avokádó, citrom, olívaolaj',
+            'instructions': 'Főzd meg a quinoát, várd meg hogy kihűljön. Vágd apróra a zöldségeket és keverd össze a quinoával. Citromlével és olívaolajjal ízesítsd.',
+            'images': 'https://via.placeholder.com/300x200?text=Quinoa+Salat'
         },
         {
             'id': 2,
-            'title': 'Quinoa Buddha Bowl',
-            'hsi': 92.1,
+            'title': 'Vegán chili sin carne',
+            'hsi': 78.3,
             'esi': 38.7,
-            'ppi': 65.4,
-            'category': 'Vegán',
-            'ingredients': 'quinoa, édesburgonya, spenót, avokádó, csicseriborsó, tahini',
-            'instructions': 'Főzzük meg a quinoát, süssük meg az édesburgonyát, tálaljuk a zöldségekkel.',
-            'images': 'https://example.com/quinoa_bowl.jpg'
+            'ppi': 82.5,
+            'category': 'Főételek',
+            'ingredients': 'vörös bab, kukorica, paprika, hagyma, paradicsom, chili, kömény',
+            'instructions': 'Dinszteld le a hagymát és paprikát. Add hozzá a babot, kukoricát és paradicsomot. Fűszerezd és főzd 20 percig.',
+            'images': 'https://via.placeholder.com/300x200?text=Vegan+Chili'
         },
         {
             'id': 3,
-            'title': 'Csirkemell zöldségekkel',
-            'hsi': 76.8,
-            'esi': 120.5,
-            'ppi': 88.2,
-            'category': 'Hús',
-            'ingredients': 'csirkemell, brokkoli, sárgarépa, paprika, olívaolaj, fokhagyma',
-            'instructions': 'Süssük meg a csirkemellet, pároljuk a zöldségeket és tálaljuk együtt.',
-            'images': 'https://example.com/chicken_vegetables.jpg'
+            'title': 'Spenótos lencse curry',
+            'hsi': 82.7,
+            'esi': 42.1,
+            'ppi': 75.8,
+            'category': 'Főételek',
+            'ingredients': 'vörös lencse, spenót, kókusztej, curry por, gyömbér, fokhagyma',
+            'instructions': 'Főzd meg a lencsét. Külön serpenyőben dinszteld meg a fűszereket, add hozzá a spenótot és kókusztejet.',
+            'images': 'https://via.placeholder.com/300x200?text=Lentil+Curry'
+        },
+        {
+            'id': 4,
+            'title': 'Mediterrán halfilé',
+            'hsi': 72.1,
+            'esi': 65.3,
+            'ppi': 88.9,
+            'category': 'Hal',
+            'ingredients': 'tőkehal filé, olívabogyó, paradicsom, oregano, citrom',
+            'instructions': 'Süsd meg a halat, tálald mediterrán zöldségekkel.',
+            'images': 'https://via.placeholder.com/300x200?text=Fish+Mediterranean'
+        },
+        {
+            'id': 5,
+            'title': 'Avokádós toast',
+            'hsi': 68.4,
+            'esi': 52.1,
+            'ppi': 91.2,
+            'category': 'Snackek',
+            'ingredients': 'teljes kiőrlésű kenyér, avokádó, lime, só, bors',
+            'instructions': 'Pirítsd meg a kenyeret, törj rá avokádót és ízesítsd.',
+            'images': 'https://via.placeholder.com/300x200?text=Avocado+Toast'
         }
     ]
     
     df = pd.DataFrame(sample_recipes)
     insert_recipes_to_db(df)
-    print("✅ Minta adatok létrehozva!")
+    logger.info("✅ Minta adatok létrehozva!")
 
 def main():
-    """Fő függvény"""
-    print("🚀 GreenRec adatbázis inicializálás kezdődik...")
+    """Fő függvény - adatbázis inicializálás"""
+    logger.info("🚀 GreenRec adatbázis inicializálás kezdődik...")
     
-    # 1. Táblák létrehozása
-    create_tables()
-    
-    # 2. CSV adatok betöltése (ha létezik)
-    csv_file = 'greenrec_recipes.csv'  # Vagy az általad megadott fájlnév
-    
-    if os.path.exists(csv_file):
-        print(f"📁 CSV fájl található: {csv_file}")
-        df = load_csv_data(csv_file)
-        if df is not None:
-            insert_recipes_to_db(df)
+    try:
+        # 1. Táblák létrehozása
+        create_tables()
+        
+        # 2. JSON adatok betöltése
+        json_file = 'greenrec_dataset.json'
+        
+        if os.path.exists(json_file):
+            logger.info(f"📁 JSON fájl található: {json_file}")
+            df = load_json_data(json_file)
+            if df is not None and len(df) > 0:
+                insert_recipes_to_db(df)
+                logger.info(f"🎉 Adatbázis sikeresen inicializálva {len(df)} recepttel!")
+            else:
+                logger.warning("❌ JSON betöltés sikertelen, minta adatok létrehozása...")
+                create_sample_data()
         else:
-            print("❌ CSV betöltés sikertelen, minta adatok létrehozása...")
+            logger.warning(f"⚠️  JSON fájl nem található: {json_file}")
+            logger.info("🔧 Minta adatok létrehozása...")
             create_sample_data()
-    else:
-        print(f"⚠️  CSV fájl nem található: {csv_file}")
-        print("🔧 Minta adatok létrehozása...")
-        create_sample_data()
-    
-    print("✅ Adatbázis inicializálás befejezve!")
+        
+        logger.info("✅ Adatbázis inicializálás befejezve!")
+        
+    except Exception as e:
+        logger.error(f"❌ Kritikus hiba az inicializálás során: {e}")
+        raise
 
 if __name__ == '__main__':
     main()
