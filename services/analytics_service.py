@@ -616,4 +616,4 @@ class AnalyticsService:
             }
 
 # Globális analytics service instance
-analytics_service = AnalyticsService()
+analytics_service = AnalyticsService() 
