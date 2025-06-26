@@ -228,3 +228,4 @@ class DataManager:
 
 # Globális data manager instance
 data_manager = DataManager()
+
