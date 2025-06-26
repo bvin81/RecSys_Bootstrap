@@ -401,7 +401,7 @@ def recommend():
         if recommender is None:
             return jsonify({'error': 'Ajánlórendszer nem elérhető'}), 500
             
-        recommendations = recommender.get_recommendations(num_recommendations=3)
+        recommendations = recommender.get_recommendations(num_recommendations=5)
         return jsonify({'recommendations': recommendations})
         
     except Exception as e:
