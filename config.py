@@ -48,7 +48,7 @@ class Config:
     
     # Performance beállítások
     CACHE_TIMEOUT = 300  # 5 perc cache
-    MAX_SEARCH_RESULTS = 10
+    MAX_SEARCH_RESULTS = 5
     
     # Adatfájl helyek
     RECIPE_DATA_FILE = 'data/recipes.json'
