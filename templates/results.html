@@ -53,3 +53,85 @@
         </div>
     </div>
 </div>
+
+<!-- Választás megerősítő modal -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Választás megerősítése</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Biztosan ezt a receptet választod: <strong id="selected-recipe-title"></strong>?</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Mégse</button>
+                <button type="button" class="btn btn-success" id="confirm-selection">Igen, ezt választom</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedRecipeId = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    const selectButtons = document.querySelectorAll('.select-recipe-btn');
+    const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    const confirmButton = document.getElementById('confirm-selection');
+    const titleElement = document.getElementById('selected-recipe-title');
+    
+    selectButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            selectedRecipeId = this.dataset.recipeId;
+            titleElement.textContent = this.dataset.recipeTitle;
+            modal.show();
+        });
+    });
+    
+    confirmButton.addEventListener('click', function() {
+        if (selectedRecipeId) {
+            // AJAX kérés a választás rögzítéséhez
+            fetch('/select_recipe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    recipe_id: selectedRecipeId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    modal.hide();
+                    // Sikerüzenet megjelenítése
+                    const alert = document.createElement('div');
+                    alert.className = 'alert alert-success alert-dismissible fade show';
+                    alert.innerHTML = `
+                        Köszönjük a választást! A teszt eredményei segítenek az ajánlórendszer fejlesztésében.
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.querySelector('.container').insertBefore(alert, document.querySelector('.container').firstChild);
+                    
+                    // Gombok letiltása
+                    selectButtons.forEach(btn => {
+                        btn.disabled = true;
+                        btn.textContent = 'Választás rögzítve';
+                        btn.classList.remove('btn-outline-success');
+                        btn.classList.add('btn-success');
+                    });
+                }
+            })
+            .catch(error => {
+                console.error('Hiba:', error);
+                alert('Hiba történt a választás rögzítése során.');
+            });
+        }
+    });
+});
+</script>
+{% endblock %}
