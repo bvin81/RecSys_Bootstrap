@@ -557,6 +557,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Loading manager inicializálása
     LoadingManager.init();
     
+    // ✅ ÚJ: Csillag értékelés inicializálása
+    initStarRating();
+    
     // Existing ratings betöltése a DOM-ból
     document.querySelectorAll('.star.active').forEach(star => {
         const container = star.closest('[data-recipe-id]');
@@ -636,5 +639,88 @@ style.textContent = `
     .toast-close:hover {
         background-color: rgba(0,0,0,0.1);
     }
+    
+    /* ✅ ÚJ CSS - Értékelés gombok */
+    .submit-rating-btn.disabled {
+        background: #CCCCCC;
+        color: #666666;
+        cursor: not-allowed;
+        opacity: 0.6;
+    }
+
+    .submit-rating-btn.enabled {
+        background: #4CAF50;
+        color: white;
+        cursor: pointer;
+        opacity: 1;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+    }
+
+    .submit-rating-btn.enabled:hover {
+        background: #45a049;
+        transform: translateY(-3px);
+        box-shadow: 0 6px 16px rgba(76, 175, 80, 0.4);
+    }
+
+    /* Csillagok aktív állapota */
+    .star.active {
+        color: #FFD700;
+        transform: scale(1.1);
+    }
+
+    .star:hover {
+        color: #FFD700;
+        transform: scale(1.2);
+        transition: all 0.2s ease;
+    }
 `;
 document.head.appendChild(style);
+
+// ----- ✅ ÚJ: CSILLAG ÉRTÉKELÉS MODUL -----
+function initStarRating() {
+    document.querySelectorAll('.star-rating').forEach(rating => {
+        const stars = rating.querySelectorAll('.star');
+        let currentRating = 0;
+        
+        stars.forEach((star, index) => {
+            star.addEventListener('click', () => {
+                currentRating = index + 1;
+                updateStarsVisual(stars, currentRating);
+                enableSubmitButton(rating.closest('.recipe-card'));
+            });
+            
+            star.addEventListener('mouseover', () => {
+                updateStarsVisual(stars, index + 1);
+            });
+        });
+        
+        rating.addEventListener('mouseleave', () => {
+            updateStarsVisual(stars, currentRating);
+        });
+    });
+}
+
+function updateStarsVisual(stars, rating) {
+    stars.forEach((star, index) => {
+        star.classList.toggle('active', index < rating);
+    });
+}
+
+function enableSubmitButton(recipeCard) {
+    const submitBtn = recipeCard.querySelector('.submit-rating-btn');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('disabled');
+        submitBtn.classList.add('enabled');
+    }
+}
+
+function handleImageError(img) {
+    img.src = '/static/images/placeholder.jpg';
+    img.onerror = null; // Prevent infinite loop
+}
+
+// Template compatibility - globális függvények kiegészítése
+window.initStarRating = initStarRating;
+window.handleImageError = handleImageError;
