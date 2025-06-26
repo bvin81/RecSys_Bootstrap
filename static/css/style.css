@@ -11,8 +11,8 @@
     /* Színpaletta */
     --primary-color: #4CAF50;
     --primary-dark: #45a049;
-    --secondary-color: #2196F3;
-    --accent-color: #FF9800;
+    --secondary-color: #FF9800;
+    --accent-color: #2196F3; 
     --success-color: #4CAF50;
     --warning-color: #FF9800;
     --danger-color: #f44336;
@@ -26,9 +26,9 @@
     --black: #333333;
     
     /* Gradientek */
-    --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --primary-gradient: linear-gradient(135deg, #66BB6A, #4CAF50);
     --success-gradient: linear-gradient(45deg, #4CAF50, #45a049);
-    --card-gradient: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+    --card-gradient: linear-gradient(135deg, #FFFFFF, #F5F5F5);
     
     /* Árnyékok */
     --shadow-sm: 0 2px 4px rgba(0,0,0,0.1);
