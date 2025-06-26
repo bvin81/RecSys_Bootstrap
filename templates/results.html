@@ -210,4 +210,814 @@
                     {% endif %}
                 </div>
             </div>
-            {% endfor
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Értékelési szokások -->
+    <div class="rating-patterns">
+        <h2 class="section-title">
+            ⭐ Értékelési Szokások
+        </h2>
+
+        <div class="patterns-container">
+            <!-- Értékelések eloszlása -->
+            <div class="pattern-card">
+                <h4>Értékelések Eloszlása</h4>
+                <div class="rating-distribution">
+                    {% for rating in range(1, 6) %}
+                    {% set count = user_summary.rating_distribution.get(rating, 0) %}
+                    {% set percentage = (count / (user_summary.total_ratings or 1) * 100) if user_summary.total_ratings > 0 else 0 %}
+                    <div class="rating-bar">
+                        <span class="rating-label">{{ rating }} ⭐</span>
+                        <div class="bar-container">
+                            <div class="bar-fill" style="width: {{ percentage }}%"></div>
+                        </div>
+                        <span class="rating-count">{{ count }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Preferenciák elemzése -->
+            <div class="pattern-card">
+                <h4>Preferencia Elemzés</h4>
+                <div class="preferences">
+                    <div class="preference-item">
+                        <span class="pref-icon">🌍</span>
+                        <div class="pref-content">
+                            <span class="pref-label">Környezettudatosság</span>
+                            <div class="pref-bar">
+                                <div class="pref-fill" style="width: {{ ((user_metrics.satisfaction or 0) * 100) }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="preference-item">
+                        <span class="pref-icon">💚</span>
+                        <div class="pref-content">
+                            <span class="pref-label">Egészségtudatosság</span>
+                            <div class="pref-bar">
+                                <div class="pref-fill" style="width: {{ ((user_metrics.satisfaction or 0) * 90) }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="preference-item">
+                        <span class="pref-icon">👤</span>
+                        <div class="pref-content">
+                            <span class="pref-label">Népszerű receptek</span>
+                            <div class="pref-bar">
+                                <div class="pref-fill" style="width: {{ ((user_metrics.satisfaction or 0) * 80) }}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Összehasonlítás más csoportokkal -->
+    <div class="group-comparison">
+        <h2 class="section-title">
+            🔬 Összehasonlítás Más Csoportokkal
+        </h2>
+
+        <div class="comparison-note">
+            <p>
+                <i class="fas fa-info-circle"></i>
+                Az Ön teljesítménye ({{ get_group_name(user_summary.user_group) }} csoport) 
+                összehasonlítva a többi tesztelő csoporttal:
+            </p>
+        </div>
+
+        <div class="comparison-chart">
+            <div class="chart-container">
+                <canvas id="comparisonChart" width="400" height="200"></canvas>
+            </div>
+            
+            <div class="comparison-legend">
+                <div class="legend-item group-a">
+                    <span class="legend-color"></span>
+                    <span>A Csoport (Alapértelmezett)</span>
+                </div>
+                <div class="legend-item group-b">
+                    <span class="legend-color"></span>
+                    <span>B Csoport (Score-támogatott)</span>
+                </div>
+                <div class="legend-item group-c">
+                    <span class="legend-color"></span>
+                    <span>C Csoport (Intelligens hibrid)</span>
+                </div>
+                <div class="legend-item current-user">
+                    <span class="legend-color"></span>
+                    <span>Az Ön teljesítménye</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Személyes ajánlások -->
+    <div class="personal-recommendations">
+        <h2 class="section-title">
+            💡 Személyes Fejlesztési Javaslatok
+        </h2>
+
+        <div class="recommendations-grid">
+            {% if (user_metrics.precision_at_5 or 0) < 0.6 %}
+            <div class="recommendation-card">
+                <div class="rec-icon">🎯</div>
+                <h4>Pontosság Fejlesztése</h4>
+                <p>Próbáljon több időt szánni az ajánlások alapos átgondolására. 
+                   A {{ ((1 - (user_metrics.precision_at_5 or 0)) * 100) | round(0) }}%-os javítási potenciál jelentős!</p>
+            </div>
+            {% endif %}
+
+            {% if (user_metrics.diversity_score or 0) < 0.5 %}
+            <div class="recommendation-card">
+                <div class="rec-icon">🌈</div>
+                <h4>Változatosság Növelése</h4>
+                <p>Érdemes kipróbálni új kategóriájú recepteket és összetevőket. 
+                   Ez gazdagíthatja a kulináris élményeit!</p>
+            </div>
+            {% endif %}
+
+            {% if user_summary.total_ratings < 10 %}
+            <div class="recommendation-card">
+                <div class="rec-icon">⭐</div>
+                <h4>Több Értékelés</h4>
+                <p>További értékelésekkel még pontosabb ajánlásokat kaphat. 
+                   Folytassa a tanulmányt a jobb eredményekért!</p>
+            </div>
+            {% endif %}
+
+            {% if (user_metrics.satisfaction or 0) > 0.8 %}
+            <div class="recommendation-card success">
+                <div class="rec-icon">🏆</div>
+                <h4>Kiváló Teljesítmény!</h4>
+                <p>Gratulálunk! Az Ön elégedettsége kimagasló. 
+                   Folytathatja az egészségtudatos receptek felfedezését!</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Akció gombok -->
+    <div class="action-buttons">
+        {% if not user_summary.study_completed %}
+        <a href="{{ url_for('index') }}" class="btn btn-primary btn-large">
+            <i class="fas fa-play"></i>
+            Tanulmány Folytatása
+        </a>
+        {% endif %}
+        
+        <a href="{{ url_for('analytics') }}" class="btn btn-secondary btn-large">
+            <i class="fas fa-chart-bar"></i>
+            Részletes Analytics
+        </a>
+        
+        <button onclick="exportResults()" class="btn btn-outline btn-large">
+            <i class="fas fa-download"></i>
+            Eredmények Letöltése
+        </button>
+        
+        <a href="{{ url_for('reset_session') }}" class="btn btn-warning btn-large">
+            <i class="fas fa-refresh"></i>
+            Új Próbálkozás
+        </a>
+    </div>
+
+    <!-- Köszönetnyilvánítás -->
+    <div class="thank-you">
+        <div class="thank-you-content">
+            <h3>🙏 Köszönjük a Részvételt!</h3>
+            <p>
+                Az Ön értékes visszajelzései hozzájárulnak a fenntartható 
+                étkezési szokások kutatásához és az ajánlórendszerek fejlesztéséhez.
+            </p>
+            {% if user_summary.study_completed %}
+            <p class="completion-message">
+                <strong>A tanulmány sikeresen befejeződött!</strong> 
+                Eredményei segítik az AI-alapú receptajánlók továbbfejlesztését.
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Hidden data for charts -->
+<script type="text/javascript">
+    window.userResults = {
+        user_group: '{{ user_summary.user_group }}',
+        metrics: {{ user_metrics | tojson }},
+        summary: {{ user_summary | tojson }}
+    };
+</script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+
+<script>
+// Progress circles animálása
+function animateProgressCircles() {
+    const circles = document.querySelectorAll('.progress-circle');
+    
+    circles.forEach(circle => {
+        const percentage = parseFloat(circle.dataset.percentage) || 0;
+        const circumference = 2 * Math.PI * 45; // 45px radius
+        const strokeDasharray = circumference;
+        const strokeDashoffset = circumference - (percentage / 100) * circumference;
+        
+        // SVG létrehozása ha nincs még
+        if (!circle.querySelector('svg')) {
+            circle.innerHTML = `
+                <svg width="120" height="120" viewBox="0 0 120 120">
+                    <circle cx="60" cy="60" r="45" fill="none" stroke="#e0e0e0" stroke-width="8"/>
+                    <circle cx="60" cy="60" r="45" fill="none" stroke="#4CAF50" stroke-width="8"
+                            stroke-dasharray="${strokeDasharray}" 
+                            stroke-dashoffset="${strokeDasharray}"
+                            stroke-linecap="round" 
+                            transform="rotate(-90 60 60)"
+                            class="progress-stroke"/>
+                </svg>
+                <span class="progress-text">${percentage.toFixed(1)}%</span>
+            `;
+        }
+        
+        // Animáció
+        setTimeout(() => {
+            const stroke = circle.querySelector('.progress-stroke');
+            if (stroke) {
+                stroke.style.transition = 'stroke-dashoffset 1.5s ease-in-out';
+                stroke.style.strokeDashoffset = strokeDashoffset;
+            }
+        }, 500);
+    });
+}
+
+// Összehasonlítási chart
+function createComparisonChart() {
+    const ctx = document.getElementById('comparisonChart');
+    if (!ctx || !window.Chart) return;
+    
+    // Demo adatok (valós implementációban az analytics service-ből jönne)
+    const currentUserMetrics = window.userResults.metrics;
+    
+    new Chart(ctx, {
+        type: 'radar',
+        data: {
+            labels: ['Precision@5', 'Recall@5', 'F1 Score', 'Diverzitás', 'Elégedettség'],
+            datasets: [
+                {
+                    label: 'A Csoport',
+                    data: [0.42, 0.38, 0.40, 0.45, 0.52],
+                    borderColor: '#1976d2',
+                    backgroundColor: 'rgba(25, 118, 210, 0.1)',
+                    pointBackgroundColor: '#1976d2'
+                },
+                {
+                    label: 'B Csoport', 
+                    data: [0.58, 0.54, 0.56, 0.52, 0.68],
+                    borderColor: '#388e3c',
+                    backgroundColor: 'rgba(56, 142, 60, 0.1)',
+                    pointBackgroundColor: '#388e3c'
+                },
+                {
+                    label: 'C Csoport',
+                    data: [0.74, 0.71, 0.72, 0.68, 0.82],
+                    borderColor: '#f57c00',
+                    backgroundColor: 'rgba(245, 124, 0, 0.1)',
+                    pointBackgroundColor: '#f57c00'
+                },
+                {
+                    label: 'Az Ön teljesítménye',
+                    data: [
+                        currentUserMetrics.precision_at_5 || 0,
+                        currentUserMetrics.recall_at_5 || 0,
+                        currentUserMetrics.f1_score || 0,
+                        currentUserMetrics.diversity_score || 0,
+                        currentUserMetrics.satisfaction || 0
+                    ],
+                    borderColor: '#e91e63',
+                    backgroundColor: 'rgba(233, 30, 99, 0.2)',
+                    pointBackgroundColor: '#e91e63',
+                    borderWidth: 3
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: false // Külön legend van
+                }
+            },
+            scales: {
+                r: {
+                    beginAtZero: true,
+                    max: 1,
+                    ticks: {
+                        stepSize: 0.2
+                    }
+                }
+            }
+        }
+    });
+}
+
+// Eredmények exportálása
+function exportResults() {
+    const results = {
+        user_info: window.userResults.summary,
+        metrics: window.userResults.metrics,
+        export_date: new Date().toISOString(),
+        study_type: 'GreenRec A/B/C Test'
+    };
+    
+    const dataStr = JSON.stringify(results, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    
+    const exportFileDefaultName = `greenrec_results_${window.userResults.user_group}_${new Date().toISOString().split('T')[0]}.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+    
+    showToast('Eredmények exportálva! 📊', 'success');
+}
+
+// Oldal betöltése
+document.addEventListener('DOMContentLoaded', function() {
+    // Progress circles animálása
+    setTimeout(() => {
+        animateProgressCircles();
+    }, 500);
+    
+    // Chart létrehozása
+    setTimeout(() => {
+        createComparisonChart();
+    }, 1000);
+    
+    // Kártyák animálása
+    const cards = document.querySelectorAll('.summary-card, .metric-card, .round-card');
+    cards.forEach((card, index) => {
+        setTimeout(() => {
+            card.style.animation = 'fadeInUp 0.5s ease forwards';
+        }, index * 100);
+    });
+});
+</script>
+
+<style>
+/* Eredmények oldal specifikus stílusok */
+.summary-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.summary-card {
+    background: var(--white);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-xl);
+    box-shadow: var(--shadow-md);
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-lg);
+    transition: var(--transition-normal);
+}
+
+.summary-card:hover {
+    transform: translateY(-5px);
+    box-shadow: var(--shadow-lg);
+}
+
+.summary-card.completion {
+    border-left: 4px solid var(--success-color);
+}
+
+.summary-card.ratings {
+    border-left: 4px solid var(--warning-color);
+}
+
+.summary-card.performance {
+    border-left: 4px solid var(--info-color);
+}
+
+.summary-card.time {
+    border-left: 4px solid var(--accent-color);
+}
+
+.card-icon {
+    font-size: var(--font-size-3xl);
+    color: var(--primary-color);
+    min-width: 60px;
+    text-align: center;
+}
+
+.card-value {
+    font-size: var(--font-size-2xl);
+    font-weight: bold;
+    color: var(--primary-color);
+    margin: var(--spacing-xs) 0;
+}
+
+.card-detail {
+    font-size: var(--font-size-sm);
+    color: var(--dark-gray);
+    margin: 0;
+}
+
+.metrics-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.metric-card {
+    background: var(--white);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-xl);
+    box-shadow: var(--shadow-md);
+    text-align: center;
+    transition: var(--transition-normal);
+}
+
+.metric-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+.metric-header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+.metric-help {
+    color: var(--gray);
+    cursor: help;
+}
+
+.metric-visual {
+    margin: var(--spacing-xl) 0;
+    display: flex;
+    justify-content: center;
+}
+
+.progress-circle {
+    position: relative;
+    width: 120px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.progress-text {
+    position: absolute;
+    font-size: var(--font-size-lg);
+    font-weight: bold;
+    color: var(--primary-color);
+}
+
+.metric-description {
+    color: var(--dark-gray);
+    font-size: var(--font-size-sm);
+    line-height: 1.4;
+}
+
+.rounds-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.round-card {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    transition: var(--transition-normal);
+}
+
+.round-card.completed {
+    border-left: 4px solid var(--success-color);
+}
+
+.round-card.pending {
+    border-left: 4px solid var(--gray);
+    opacity: 0.7;
+}
+
+.round-header {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.round-number {
+    background: var(--primary-color);
+    color: var(--white);
+    width: 30px;
+    height: 30px;
+    border-radius: var(--radius-full);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: var(--font-size-sm);
+}
+
+.round-status.completed {
+    color: var(--success-color);
+}
+
+.round-status.pending {
+    color: var(--gray);
+}
+
+.round-stats {
+    space-y: var(--spacing-sm);
+}
+
+.stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: var(--font-size-sm);
+}
+
+.stat-value.success {
+    color: var(--success-color);
+    font-weight: bold;
+}
+
+.stat-value.current {
+    color: var(--info-color);
+    font-weight: bold;
+}
+
+.stat-value.pending {
+    color: var(--gray);
+}
+
+.patterns-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: var(--spacing-xl);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.pattern-card {
+    background: var(--white);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-xl);
+    box-shadow: var(--shadow-md);
+}
+
+.rating-distribution {
+    space-y: var(--spacing-md);
+}
+
+.rating-bar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-md);
+}
+
+.rating-label {
+    min-width: 50px;
+    font-size: var(--font-size-sm);
+}
+
+.bar-container {
+    flex: 1;
+    height: 20px;
+    background: var(--light-gray);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.bar-fill {
+    height: 100%;
+    background: var(--primary-gradient);
+    transition: width 1s ease;
+}
+
+.rating-count {
+    min-width: 30px;
+    text-align: right;
+    font-size: var(--font-size-sm);
+    font-weight: bold;
+}
+
+.preferences {
+    space-y: var(--spacing-lg);
+}
+
+.preference-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md);
+    margin-bottom: var(--spacing-lg);
+}
+
+.pref-icon {
+    font-size: var(--font-size-xl);
+    min-width: 40px;
+}
+
+.pref-content {
+    flex: 1;
+}
+
+.pref-label {
+    display: block;
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    margin-bottom: var(--spacing-xs);
+}
+
+.pref-bar {
+    height: 8px;
+    background: var(--light-gray);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.pref-fill {
+    height: 100%;
+    background: var(--primary-gradient);
+    transition: width 1.5s ease;
+}
+
+.comparison-note {
+    background: var(--light-gray);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-xl);
+    text-align: center;
+}
+
+.chart-container {
+    background: var(--white);
+    padding: var(--spacing-xl);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: var(--spacing-lg);
+}
+
+.comparison-legend {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm);
+    font-size: var(--font-size-sm);
+}
+
+.legend-color {
+    width: 20px;
+    height: 4px;
+    border-radius: 2px;
+}
+
+.legend-item.group-a .legend-color {
+    background: #1976d2;
+}
+
+.legend-item.group-b .legend-color {
+    background: #388e3c;
+}
+
+.legend-item.group-c .legend-color {
+    background: #f57c00;
+}
+
+.legend-item.current-user .legend-color {
+    background: #e91e63;
+}
+
+.recommendations-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.recommendation-card {
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-lg);
+    box-shadow: var(--shadow-sm);
+    border-left: 4px solid var(--warning-color);
+    transition: var(--transition-normal);
+}
+
+.recommendation-card.success {
+    border-left-color: var(--success-color);
+}
+
+.recommendation-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+}
+
+.rec-icon {
+    font-size: var(--font-size-2xl);
+    margin-bottom: var(--spacing-md);
+}
+
+.action-buttons {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-lg);
+    margin-bottom: var(--spacing-2xl);
+}
+
+.btn-large {
+    padding: var(--spacing-lg) var(--spacing-xl);
+    font-size: var(--font-size-lg);
+}
+
+.btn-outline {
+    background: transparent;
+    border: 2px solid var(--primary-color);
+    color: var(--primary-color);
+}
+
+.btn-outline:hover {
+    background: var(--primary-color);
+    color: var(--white);
+}
+
+.btn-warning {
+    background: linear-gradient(45deg, var(--warning-color), #ff8f00);
+}
+
+.thank-you {
+    background: var(--primary-gradient);
+    border-radius: var(--radius-xl);
+    padding: var(--spacing-2xl);
+    text-align: center;
+    color: var(--white);
+}
+
+.completion-message {
+    background: rgba(255, 255, 255, 0.2);
+    padding: var(--spacing-lg);
+    border-radius: var(--radius-md);
+    margin-top: var(--spacing-lg);
+    font-weight: 500;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .summary-cards {
+        grid-template-columns: 1fr;
+    }
+    
+    .metrics-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .rounds-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .comparison-legend {
+        flex-direction: column;
+        align-items: center;
+    }
+}
+</style>
+{% endblock %}
