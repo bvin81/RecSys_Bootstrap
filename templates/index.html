@@ -144,15 +144,15 @@
                     </div>
                     
                     <!-- Értékelő csillagok -->
+                    <!-- Értékelő csillagok -->
                     <div class="rating-container">
-                        <div class="stars" data-recipe-id="{{ recipe.recipe_id or loop.index }}">
+                        <div class="star-rating" data-recipe-id="{{ recipe.recipe_id or loop.index }}">
                             {% for i in range(1, 6) %}
-                            <span class="star" data-rating="{{ i }}" onclick="rateRecipe(event, {{ recipe.recipe_id or loop.index }}, {{ i }})">
-                                ★
-                            </span>
+                            <span class="star" data-rating="{{ i }}">★</span>
                             {% endfor %}
                         </div>
-                        <p class="rating-hint">Kattintson az értékeléshez (1-5 csillag)</p>
+                        <button class="submit-rating-btn disabled">Értékelés mentése</button>
+                        <p class="rating-hint">Kattintson a csillagokra az értékeléshez (1-5 csillag)</p>
                     </div>
                 </div>
             </div>
