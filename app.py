@@ -31,9 +31,15 @@ app.config.from_object(current_config)
 # Session konfiguráció
 app.permanent_session_lifetime = 24 * 60 * 60  # 24 óra
 
-@app.before_first_request
+# ✅ FLASK 2.2+ KOMPATIBILIS INICIALIZÁLÁS
+_app_initialized = False
+
 def initialize_application():
-    """Alkalmazás inicializálása az első kérés előtt"""
+    """Alkalmazás inicializálása (Flask 2.2+ kompatibilis)"""
+    global _app_initialized
+    if _app_initialized:
+        return
+    
     try:
         # Adatok betöltése
         data_manager.load_recipe_data()
@@ -42,9 +48,16 @@ def initialize_application():
         recommendation_engine.initialize()
         
         logger.info("✅ GreenRec alkalmazás sikeresen inicializálva")
+        _app_initialized = True
         
     except Exception as e:
         logger.error(f"❌ Alkalmazás inicializálási hiba: {e}")
+
+@app.before_request
+def ensure_initialization():
+    """Biztosítja, hogy az alkalmazás inicializálva legyen minden kérés előtt"""
+    if not _app_initialized:
+        initialize_application()
 
 @app.route('/')
 def index():
