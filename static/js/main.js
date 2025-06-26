@@ -211,7 +211,7 @@ const RatingManager = {
         try {
             LoadingManager.show('Értékelés mentése...');
             
-            const response = await ApiManager.post('/rate_recipe', {
+            const response = await ApiManager.post('/rate', {
                 recipe_id: recipeId,
                 rating: rating
             });
