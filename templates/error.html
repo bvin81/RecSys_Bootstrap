@@ -180,7 +180,7 @@
 <input type="hidden" id="errorData" value="{{ {
     'code': error_code,
     'message': error_message,
-    'timestamp': moment().strftime('%Y-%m-%d %H:%M:%S'),
+    'timestamp': '{{ moment().strftime('%Y-%m-%d %H:%M:%S') }}',
     'url': request.url,
     'user_agent': request.user_agent.string,
     'session_id': session.user_id if session.user_id else 'N/A',
