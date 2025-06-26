@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}🌱 GreenRec - Fenntartható Receptajánló{% endblock %}</title>
+    
+    <!-- CSS -->
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    
+    <!-- Font Awesome ikonok -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <!-- Chart.js (analytics oldalhoz) -->
+    {% if request.endpoint == 'analytics' %}
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    {% endif %}
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <!-- Navigációs sáv -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-brand">
+                <a href="{{ url_for('index') }}">
+                    <span class="nav-logo">🌱</span>
+                    <span class="nav-title">GreenRec</span>
+                </a>
+            </div>
+            
+            <div class="nav-menu">
+                <a href="{{ url_for('index') }}" class="nav-link">
+                    <i class="fas fa-home"></i> Főoldal
+                </a>
+                <a href="{{ url_for('analytics') }}" class="nav-link">
+                    <i class="fas fa-chart-bar"></i> Analytics
+                </a>
+                {% if session.user_id %}
+                <a href="{{ url_for('results') }}" class="nav-link">
+                    <i class="fas fa-trophy"></i> Eredmények
+                </a>
+                <a href="{{ url_for('reset_session') }}" class="nav-link nav-reset">
+                    <i class="fas fa-refresh"></i> Új kezdés
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Fő tartalom -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>🌱 GreenRec</h4>
+                    <p>Fenntartható receptajánló rendszer</p>
+                    {% if session.user_group %}
+                    <p class="footer-user-info">
+                        <span class="group-badge group-{{ session.user_group }}">
+                            {{ get_group_name(session.user_group) }} Csoport
+                        </span>
+                    </p>
+                    {% endif %}
+                </div>
+                
+                <div class="footer-section">
+                    <h4>📊 Metrikák</h4>
+                    <ul class="footer-links">
+                        <li>🎯 Precision@5</li>
+                        <li>🔄 Recall@5</li>
+                        <li>📈 F1 Score</li>
+                        <li>🌈 Diversity</li>
+                    </ul>
+                </div>
+                
+                <div class="footer-section">
+                    <h4>🔬 A/B/C Teszt</h4>
+                    <ul class="footer-links">
+                        <li>A: Alapértelmezett</li>
+                        <li>B: Score-támogatott</li>
+                        <li>C: Intelligens hibrid</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="footer-bottom">
+                <p>&copy; 2025 GreenRec - Államvizsga Projekt</p>
+                <div class="footer-debug">
+                    {% if session.user_id %}
+                    <small>
+                        User: {{ session.user_id[:8] }}... | 
+                        Kör: {{ session.current_round or 1 }}/3
+                    </small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+    
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="loading-overlay" style="display: none;">
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin"></i>
+            <p>Betöltés...</p>
+        </div>
+    </div>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
