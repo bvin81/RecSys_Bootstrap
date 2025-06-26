@@ -79,7 +79,7 @@ def register_main_routes(app):
             return redirect(url_for('recipes.enhanced_study'))
         
         # Különben welcome oldalra
-        return redirect(url_for('user_study.welcome'))
+        return redirect(url_for('recipes.enhanced_study'))
     
     @app.route('/health')
     def health_check():
