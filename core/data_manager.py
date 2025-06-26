@@ -136,53 +136,119 @@ class DataManager:
         """
         df = df.copy()
         
+        # ✅ GREENREC_DATASET.JSON MEZŐK MAPPELÉSE
+        # JSON mezők → Template mezők átnevezése
+        field_mapping = {
+            'recipeid': 'recipe_id',      # recipeid → recipe_id
+            'title': 'name',              # title → name
+            'images': 'image_url',        # images → image_url
+            # ESI, HSI, PPI már jó néven vannak a JSON-ban
+        }
+        
+        # Mezők átnevezése ha léteznek
+        for old_name, new_name in field_mapping.items():
+            if old_name in df.columns and new_name not in df.columns:
+                df = df.rename(columns={old_name: new_name})
+                logger.info(f"✅ Mező átnevezve: {old_name} → {new_name}")
+        
         # Kötelező oszlopok ellenőrzése és kiegészítése
         required_columns = {
             'recipe_id': range(1, len(df) + 1),
             'name': [f"Recept #{i}" for i in range(1, len(df) + 1)],
             'ingredients': ['alapösszetevők'] * len(df),
-            'environmental_impact': [50] * len(df),
-            'health_score': [60] * len(df),
-            'popularity': [70] * len(df)
+            'ESI': [50] * len(df),  # Environmental Score Index
+            'HSI': [60] * len(df),  # Health Score Index  
+            'PPI': [70] * len(df),  # Popularity Index
+            'category': ['Egyéb'] * len(df),
+            'image_url': [None] * len(df)
         }
         
+        # Hiányzó oszlopok hozzáadása
         for col, default_values in required_columns.items():
             if col not in df.columns:
-                df[col] = default_values
-                logger.warning(f"Hiányzó oszlop kiegészítve: {col}")
-        
-        # ESI inverz normalizálás (alacsonyabb ESI = jobb környezeti hatás)
-        df['esi_raw'] = df['environmental_impact']
-        df['esi_inverted'] = 100 - df['environmental_impact']  # Inverz: magasabb = jobb
-        
-        # Normalizálás 0-100 skálára
-        for col in ['esi_inverted', 'health_score', 'popularity']:
-            if col in df.columns:
-                min_val = df[col].min()
-                max_val = df[col].max()
-                if max_val > min_val:
-                    df[f'{col}_normalized'] = 100 * (df[col] - min_val) / (max_val - min_val)
+                if isinstance(default_values, (list, np.ndarray)):
+                    df[col] = default_values
                 else:
-                    df[f'{col}_normalized'] = [50] * len(df)
+                    df[col] = default_values
+                logger.warning(f"⚠️ Hiányzó oszlop kiegészítve: {col}")
         
-        # Kompozit pontszám számítása (ESI×0.4 + HSI×0.4 + PPI×0.2)
-        df['composite_score'] = (
-            df.get('esi_inverted_normalized', df['esi_inverted']) * current_config.ESI_WEIGHT +
-            df.get('health_score_normalized', df['health_score']) * current_config.HSI_WEIGHT +
-            df.get('popularity_normalized', df['popularity']) * current_config.PPI_WEIGHT
-        )
+        # ✅ ADATTÍPUSOK JAVÍTÁSA
+        # Recipe ID biztosan integer legyen
+        if 'recipe_id' in df.columns:
+            df['recipe_id'] = pd.to_numeric(df['recipe_id'], errors='coerce').fillna(range(1, len(df) + 1)).astype(int)
         
-        # Placeholder képek hozzáadása
-        if 'image_url' not in df.columns:
-            df['image_url'] = [
-                f"https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=300&h=200&fit=crop&q=80&sig={i}"
-                for i in range(len(df))
-            ]
+        # Numerikus oszlopok
+        for col in ['ESI', 'HSI', 'PPI']:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(50.0)
         
-        # Összetevők szöveg előkészítése TF-IDF-hez
-        df['ingredients_text'] = df['ingredients'].astype(str).str.lower()
+        # String oszlopok tisztítása
+        for col in ['name', 'ingredients', 'category']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).fillna("N/A")
         
-        logger.info("✅ Adatok előkészítése befejezve")
+        # ✅ ESI INVERZ SZÁMÍTÁS (alacsonyabb ESI = jobb környezeti hatás)
+        if 'ESI' in df.columns:
+            # ESI normalizálása 0-100 skálára
+            esi_min, esi_max = df['ESI'].min(), df['ESI'].max()
+            if esi_max > esi_min:
+                df['esi_normalized'] = 100 * (df['ESI'] - esi_min) / (esi_max - esi_min)
+            else:
+                df['esi_normalized'] = [50] * len(df)
+            
+            # ESI inverz: 100 - normalized (magasabb érték = jobb környezeti hatás)
+            df['esi_inverted'] = 100 - df['esi_normalized']
+            
+            logger.info(f"✅ ESI feldolgozva: {esi_min:.1f}-{esi_max:.1f} → inverted")
+        
+        # ✅ HSI ÉS PPI NORMALIZÁLÁS
+        for col, new_col in [('HSI', 'health_score'), ('PPI', 'popularity')]:
+            if col in df.columns:
+                col_min, col_max = df[col].min(), df[col].max()
+                if col_max > col_min:
+                    df[f'{col.lower()}_normalized'] = 100 * (df[col] - col_min) / (col_max - col_min)
+                else:
+                    df[f'{col.lower()}_normalized'] = [50] * len(df)
+                
+                # Eredeti név megtartása kompatibilitásért
+                df[new_col] = df[col]
+                logger.info(f"✅ {col} normalizálva")
+        
+        # ✅ KOMPOZIT PONTSZÁM SZÁMÍTÁSA
+        if all(col in df.columns for col in ['esi_inverted', 'HSI', 'PPI']):
+            # Súlyozott átlag a config alapján
+            df['composite_score'] = (
+                df['esi_inverted'] * current_config.ESI_WEIGHT +
+                df.get('hsi_normalized', df['HSI']) * current_config.HSI_WEIGHT +
+                df.get('ppi_normalized', df['PPI']) * current_config.PPI_WEIGHT
+            )
+            logger.info("✅ Kompozit pontszám kiszámítva")
+        
+        # ✅ KÉPEK URL VALIDÁLÁSA
+        if 'image_url' in df.columns:
+            # Csak érvényes HTTP URL-ek megtartása
+            df['image_url'] = df['image_url'].apply(
+                lambda x: x if (isinstance(x, str) and x.startswith('http')) else None
+            )
+            
+            # Placeholder képek hiányzó esetekre
+            missing_images = df['image_url'].isna().sum()
+            if missing_images > 0:
+                logger.info(f"⚠️ {missing_images} hiányzó kép URL")
+        
+        # ✅ ÖSSZETEVŐK SZÖVEG ELŐKÉSZÍTÉSE TF-IDF-hez
+        if 'ingredients' in df.columns:
+            df['ingredients_text'] = df['ingredients'].astype(str).str.lower()
+        
+        # ✅ KATEGÓRIA TISZTÍTÁS
+        if 'category' in df.columns:
+            # Üres kategóriák javítása
+            df['category'] = df['category'].fillna('Egyéb')
+            df['category'] = df['category'].replace('', 'Egyéb')
+        
+        logger.info(f"✅ Adatok előkészítve: {len(df)} recept, {len(df.columns)} oszlop")
+        logger.info(f"📊 Oszlopok: {list(df.columns)}")
+        
         return df
     
     def get_recipe_by_id(self, recipe_id: int) -> Optional[Dict]:
