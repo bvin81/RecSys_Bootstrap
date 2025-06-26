@@ -36,4 +36,3 @@ pytest==7.4.2
 
 # Code Quality (development only)  
 flake8==6.0.0
-
