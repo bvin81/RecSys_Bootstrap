@@ -753,4 +753,18 @@ window.updateUI = function() {
     if (statusElement) {
         statusElement.textContent = `${ratedCount} / ${requiredRatings} recept értékelve`;
     }
+}; 
+
+// ✅ ÚJ: selectRecipe függvény a template kompatibilitáshoz  
+window.selectRecipe = function(card) {
+    // Ne legyen dupla kijelölés az értékelés után
+    if (card.classList.contains('selected')) {
+        return;
+    }
+    
+    // Vizuális feedback
+    card.classList.toggle('selected');
+    
+    // Console log debug célokra
+    console.log('Recipe card selected:', card.dataset.recipeId);
 };
