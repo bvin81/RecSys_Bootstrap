@@ -5,7 +5,7 @@ GreenRec Flask Alkalmazás
 Moduláris Flask alkalmazás - csak routes és request handling.
 Üzleti logika külön modulokban (core/, services/).
 """
-#
+
 import os
 import logging
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for
