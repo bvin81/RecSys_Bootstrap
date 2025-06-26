@@ -1,0 +1,93 @@
+<!-- ===== templates/stats.html ===== -->
+{% extends "base.html" %}
+
+{% block title %}Statisztikák - GreenRec{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2>📊 Tesztelési Statisztikák</h2>
+        <p class="text-muted">A/B/C teszt jelenlegi állása</p>
+        
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Felhasználók csoportonként</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Csoport</th>
+                                    <th>Felhasználók száma</th>
+                                    <th>Leírás</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stat in group_stats %}
+                                <tr>
+                                    <td><span class="badge bg-primary">{{ stat.group_name }}</span></td>
+                                    <td>{{ stat.user_count }}</td>
+                                    <td>
+                                        {% if stat.group_name == 'A' %}
+                                        Kontroll (pontszámok nélkül)
+                                        {% elif stat.group_name == 'B' %}
+                                        Pontszámokkal
+                                        {% else %}
+                                        Pontszámok + magyarázat
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>Választások átlagos pontszámai</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Csoport</th>
+                                    <th>Választások</th>
+                                    <th>Átlag HSI</th>
+                                    <th>Átlag ESI</th>
+                                    <th>Átlag PPI</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for stat in choice_stats %}
+                                <tr>
+                                    <td><span class="badge bg-primary">{{ stat.group_name }}</span></td>
+                                    <td>{{ stat.choice_count or 0 }}</td>
+                                    <td>{{ "%.1f"|format(stat.avg_hsi or 0) }}</td>
+                                    <td>{{ "%.1f"|format(stat.avg_esi or 0) }}</td>
+                                    <td>{{ "%.1f"|format(stat.avg_ppi or 0) }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="alert alert-info mt-4">
+            <h6>📝 Kutatási hipotézis:</h6>
+            <p>A <strong>C csoport</strong> (pontszámok + magyarázat) választásainak átlagos kompozit pontszáma lesz a legmagasabb, 
+            majd a <strong>B csoport</strong> (csak pontszámok), végül az <strong>A csoport</strong> (kontroll).</p>
+        </div>
+        
+        <div class="text-center mt-4">
+            <a href="{{ url_for('index') }}" class="btn btn-primary">Vissza a főoldalra</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
