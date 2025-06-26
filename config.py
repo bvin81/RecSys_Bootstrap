@@ -1,5 +1,4 @@
 # config.py
-#
 """
 GreenRec Konfiguráció
 ==================
