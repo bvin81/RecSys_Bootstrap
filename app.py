@@ -1,6 +1,8 @@
 import os
 import logging
+import json
 from flask import Flask, request, render_template, redirect, url_for, session, flash, jsonify
+
 
 # Logging beállítása
 logging.basicConfig(level=logging.INFO)
