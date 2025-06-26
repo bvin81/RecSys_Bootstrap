@@ -175,7 +175,7 @@ class DataManager:
         # ✅ ADATTÍPUSOK JAVÍTÁSA
         # Recipe ID biztosan integer legyen
         if 'recipe_id' in df.columns:
-            df['recipe_id'] = pd.to_numeric(df['recipe_id'], errors='coerce').fillna(range(1, len(df) + 1)).astype(int)
+            df['recipe_id'] = pd.to_numeric(df['recipe_id'], errors='coerce').fillna(pd.Series(range(1, len(df) + 1))).astype(int)
         
         # Numerikus oszlopok
         for col in ['ESI', 'HSI', 'PPI']:
