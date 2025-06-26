@@ -527,6 +527,215 @@ def not_found_error(error):
 def internal_error(error):
     return render_template('500.html'), 500
 
+
+@app.route('/export/users')
+def export_users():
+    """Felhasználók exportálása CSV-be"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return "Adatbázis kapcsolati hiba", 500
+        
+        cur = conn.cursor()
+        
+        # Felhasználók adatai
+        cur.execute("""
+            SELECT 
+                id,
+                username,
+                group_name,
+                created_at,
+                CASE 
+                    WHEN username LIKE 'user_%' THEN 'teszt'
+                    ELSE 'valós'
+                END as user_type
+            FROM users 
+            ORDER BY created_at
+        """)
+        
+        users = cur.fetchall()
+        conn.close()
+        
+        # CSV generálás
+        import io
+        output = io.StringIO()
+        output.write('id,username,group_name,created_at,user_type\n')
+        
+        for user in users:
+            output.write(f'{user[0]},{user[1]},{user[2]},{user[3]},{user[4]}\n')
+        
+        # Response
+        from flask import Response
+        response = Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=greenrec_users.csv'}
+        )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ Users export hiba: {e}")
+        return f"Export hiba: {str(e)}", 500
+
+@app.route('/export/choices')
+def export_choices():
+    """Felhasználói választások exportálása CSV-be"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return "Adatbázis kapcsolati hiba", 500
+        
+        cur = conn.cursor()
+        
+        # Választások részletes adatokkal
+        cur.execute("""
+            SELECT 
+                uc.id as choice_id,
+                u.username,
+                u.group_name,
+                r.title as recipe_title,
+                r.hsi,
+                r.esi, 
+                r.ppi,
+                r.category,
+                uc.selected_at,
+                CASE 
+                    WHEN u.username LIKE 'user_%' THEN 'teszt'
+                    ELSE 'valós'
+                END as user_type
+            FROM user_choices uc
+            JOIN users u ON uc.user_id = u.id  
+            JOIN recipes r ON uc.recipe_id = r.id
+            ORDER BY uc.selected_at
+        """)
+        
+        choices = cur.fetchall()
+        conn.close()
+        
+        # CSV generálás
+        import io
+        output = io.StringIO()
+        output.write('choice_id,username,group_name,recipe_title,hsi,esi,ppi,category,selected_at,user_type\n')
+        
+        for choice in choices:
+            # CSV-safe string formatting
+            title = str(choice[3]).replace(',', ';').replace('\n', ' ')
+            output.write(f'{choice[0]},{choice[1]},{choice[2]},"{title}",{choice[4]},{choice[5]},{choice[6]},{choice[7]},{choice[8]},{choice[9]}\n')
+        
+        # Response
+        from flask import Response
+        response = Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=greenrec_choices.csv'}
+        )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ Choices export hiba: {e}")
+        return f"Export hiba: {str(e)}", 500
+
+@app.route('/export/json')
+def export_json():
+    """Teljes adatok exportálása JSON-be"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Adatbázis kapcsolati hiba'}), 500
+        
+        cur = conn.cursor()
+        
+        # Felhasználók
+        cur.execute("""
+            SELECT id, username, group_name, created_at,
+                   CASE WHEN username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
+            FROM users ORDER BY created_at
+        """)
+        users_data = []
+        for row in cur.fetchall():
+            users_data.append({
+                'id': row[0],
+                'username': row[1], 
+                'group_name': row[2],
+                'created_at': str(row[3]),
+                'user_type': row[4]
+            })
+        
+        # Választások
+        cur.execute("""
+            SELECT uc.id, u.username, u.group_name, r.title, r.hsi, r.esi, r.ppi, 
+                   r.category, uc.selected_at,
+                   CASE WHEN u.username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
+            FROM user_choices uc
+            JOIN users u ON uc.user_id = u.id  
+            JOIN recipes r ON uc.recipe_id = r.id
+            ORDER BY uc.selected_at
+        """)
+        choices_data = []
+        for row in cur.fetchall():
+            choices_data.append({
+                'choice_id': row[0],
+                'username': row[1],
+                'group_name': row[2], 
+                'recipe_title': row[3],
+                'hsi': float(row[4]),
+                'esi': float(row[5]),
+                'ppi': float(row[6]),
+                'category': row[7],
+                'selected_at': str(row[8]),
+                'user_type': row[9]
+            })
+        
+        # Statisztikák
+        cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name")
+        stats_users = dict(cur.fetchall())
+        
+        cur.execute("""
+            SELECT u.group_name, COUNT(uc.id) as choice_count
+            FROM users u 
+            LEFT JOIN user_choices uc ON u.id = uc.user_id
+            GROUP BY u.group_name
+        """)
+        stats_choices = dict(cur.fetchall())
+        
+        conn.close()
+        
+        # JSON strukturálás
+        export_data = {
+            'export_timestamp': datetime.now().isoformat(),
+            'summary': {
+                'total_users': len(users_data),
+                'total_choices': len(choices_data),
+                'users_by_group': stats_users,
+                'choices_by_group': stats_choices
+            },
+            'users': users_data,
+            'choices': choices_data
+        }
+        
+        # JSON Response
+        response = Response(
+            json.dumps(export_data, indent=2, ensure_ascii=False),
+            mimetype='application/json',
+            headers={'Content-Disposition': 'attachment; filename=greenrec_export.json'}
+        )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ JSON export hiba: {e}")
+        return jsonify({'error': str(e)}), 500
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
