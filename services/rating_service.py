@@ -347,4 +347,4 @@ class RatingService:
             return False
 
 # Globális rating service instance
-rating_service = RatingService()
+rating_service = RatingService() 
