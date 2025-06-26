@@ -214,6 +214,7 @@ const RatingManager = {
             const response = await ApiManager.post('/rate', {
                 recipe_id: recipeId,
                 rating: rating
+                round_number: 1
             });
             
             if (response.success) {
