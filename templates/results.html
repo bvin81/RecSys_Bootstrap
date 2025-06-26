@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+
+{% block title %}🏆 Az Ön Eredményei - GreenRec{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Fejléc -->
+    <div class="header-section">
+        <h1 class="page-title">
+            🏆 Az Ön Eredményei
+        </h1>
+        <p class="page-subtitle">
+            {{ get_group_name(user_summary.user_group) }} Csoport - Tanulmány Összefoglalója
+        </p>
+    </div>
+
+    <!-- Összefoglaló kártyák -->
+    <div class="summary-cards">
+        <div class="summary-card completion">
+            <div class="card-icon">
+                {% if user_summary.study_completed %}
+                <i class="fas fa-check-circle"></i>
+                {% else %}
+                <i class="fas fa-clock"></i>
+                {% endif %}
+            </div>
+            <div class="card-content">
+                <h3>Tanulmány Állapota</h3>
+                <p class="card-value">
+                    {% if user_summary.study_completed %}
+                    Befejezve ✅
+                    {% else %}
+                    Folyamatban ⏳
+                    {% endif %}
+                </p>
+                <p class="card-detail">
+                    {{ user_summary.current_round or 1 }}/{{ total_rounds }} kör teljesítve
+                </p>
+            </div>
+        </div>
+
+        <div class="summary-card ratings">
+            <div class="card-icon">
+                <i class="fas fa-star"></i>
+            </div>
+            <div class="card-content">
+                <h3>Összes Értékelés</h3>
+                <p class="card-value">{{ user_summary.total_ratings or 0 }}</p>
+                <p class="card-detail">
+                    Átlag: {{ ((user_metrics.satisfaction or 0) * 5) | round_float(1) }}/5 ⭐
+                </p>
+            </div>
+        </div>
+
+        <div class="summary-card performance">
+            <div class="card-icon">
+                <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="card-content">
+                <h3>F1 Score</h3>
+                <p class="card-value">{{ (user_metrics.f1_score or 0) | percentage }}</p>
+                <p class="card-detail">
+                    Ajánlási rendszer teljesítmény
+                </p>
+            </div>
+        </div>
+
+        <div class="summary-card time">
+            <div class="card-icon">
+                <i class="fas fa-stopwatch"></i>
+            </div>
+            <div class="card-content">
+                <h3>Időtartam</h3>
+                <p class="card-value">
+                    {{ (user_summary.session_duration_minutes or 0) | round(0) }} perc
+                </p>
+                <p class="card-detail">
+                    Aktív részvételi idő
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Részletes metrikák -->
+    <div class="detailed-metrics">
+        <h2 class="section-title">
+            📊 Részletes Teljesítmény Metrikák
+        </h2>
+
+        <div class="metrics-grid">
+            <!-- Precision@5 -->
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h4>🎯 Precision@5</h4>
+                    <span class="metric-help" title="Releváns ajánlások aránya a top 5-ben">
+                        <i class="fas fa-question-circle"></i>
+                    </span>
+                </div>
+                <div class="metric-visual">
+                    <div class="progress-circle" data-percentage="{{ (user_metrics.precision_at_5 or 0) * 100 }}">
+                        <span class="progress-text">{{ (user_metrics.precision_at_5 or 0) | percentage }}</span>
+                    </div>
+                </div>
+                <p class="metric-description">
+                    A top 5 ajánlásból hányat értékelt magasra (4-5 ⭐)
+                </p>
+            </div>
+
+            <!-- Recall@5 -->
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h4>🔄 Recall@5</h4>
+                    <span class="metric-help" title="Mennyire találta meg az összes releváns receptet">
+                        <i class="fas fa-question-circle"></i>
+                    </span>
+                </div>
+                <div class="metric-visual">
+                    <div class="progress-circle" data-percentage="{{ (user_metrics.recall_at_5 or 0) * 100 }}">
+                        <span class="progress-text">{{ (user_metrics.recall_at_5 or 0) | percentage }}</span>
+                    </div>
+                </div>
+                <p class="metric-description">
+                    Az összes kedvelt receptből mennyit talált meg a rendszer
+                </p>
+            </div>
+
+            <!-- Diversity -->
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h4>🌈 Diverzitás</h4>
+                    <span class="metric-help" title="Ajánlások változatossága">
+                        <i class="fas fa-question-circle"></i>
+                    </span>
+                </div>
+                <div class="metric-visual">
+                    <div class="progress-circle" data-percentage="{{ (user_metrics.diversity_score or 0) * 100 }}">
+                        <span class="progress-text">{{ (user_metrics.diversity_score or 0) | percentage }}</span>
+                    </div>
+                </div>
+                <p class="metric-description">
+                    Mennyire változatosak voltak az ajánlott receptek
+                </p>
+            </div>
+
+            <!-- Novelty -->
+            <div class="metric-card">
+                <div class="metric-header">
+                    <h4>✨ Újdonság</h4>
+                    <span class="metric-help" title="Mennyire szokatlan recepteket talált">
+                        <i class="fas fa-question-circle"></i>
+                    </span>
+                </div>
+                <div class="metric-visual">
+                    <div class="progress-circle" data-percentage="{{ (user_metrics.novelty_score or 0) * 100 }}">
+                        <span class="progress-text">{{ (user_metrics.novelty_score or 0) | percentage }}</span>
+                    </div>
+                </div>
+                <p class="metric-description">
+                    Mennyire újszerű vagy kevésbé ismert recepteket fedezett fel
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Körönkénti részletezés -->
+    <div class="round-breakdown">
+        <h2 class="section-title">
+            🔄 Körönkénti Teljesítmény
+        </h2>
+
+        <div class="rounds-container">
+            {% for round_num in range(1, total_rounds + 1) %}
+            <div class="round-card {% if round_num <= (user_summary.current_round or 1) %}completed{% else %}pending{% endif %}">
+                <div class="round-header">
+                    <span class="round-number">{{ round_num }}</span>
+                    <h4>{{ round_num }}. Kör</h4>
+                    {% if round_num <= (user_summary.current_round or 1) %}
+                    <span class="round-status completed">
+                        <i class="fas fa-check"></i>
+                    </span>
+                    {% else %}
+                    <span class="round-status pending">
+                        <i class="fas fa-clock"></i>
+                    </span>
+                    {% endif %}
+                </div>
+                
+                <div class="round-stats">
+                    {% set round_ratings = user_summary.ratings_by_round.get('round_' + round_num|string, 0) %}
+                    <div class="stat">
+                        <span class="stat-label">Értékelések:</span>
+                        <span class="stat-value">{{ round_ratings }}</span>
+                    </div>
+                    
+                    {% if round_num <= (user_summary.current_round or 1) and round_ratings > 0 %}
+                    <div class="stat">
+                        <span class="stat-label">Állapot:</span>
+                        <span class="stat-value success">Teljesítve</span>
+                    </div>
+                    {% elif round_num == (user_summary.current_round or 1) %}
+                    <div class="stat">
+                        <span class="stat-label">Állapot:</span>
+                        <span class="stat-value current">Aktív</span>
+                    </div>
+                    {% else %}
+                    <div class="stat">
+                        <span class="stat-label">Állapot:</span>
+                        <span class="stat-value pending">Várakozik</span>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor
