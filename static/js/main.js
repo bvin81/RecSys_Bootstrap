@@ -708,11 +708,39 @@ function updateStarsVisual(stars, rating) {
 }
 
 function enableSubmitButton(recipeCard) {
-    const submitBtn = recipeCard.querySelector('.submit-rating-btn');
+    const submitBtn = recipeCard?.querySelector('.submit-rating-btn');
     if (submitBtn) {
         submitBtn.disabled = false;
         submitBtn.classList.remove('disabled');
         submitBtn.classList.add('enabled');
+    }
+    
+    // ✅ FŐ GOMB FRISSÍTÉSE
+    checkAndUpdateMainButton();
+}
+
+function checkAndUpdateMainButton() {
+    const ratedCount = Object.keys(RatingManager.ratings).length;
+    const requiredRatings = 3;
+    
+    const nextBtn = document.getElementById('nextRoundBtn') || 
+                   document.getElementById('completeStudyBtn');
+    
+    if (nextBtn) {
+        const canProceed = ratedCount >= requiredRatings;
+        nextBtn.disabled = !canProceed;
+        
+        if (canProceed) {
+            nextBtn.innerHTML = '<i class="fas fa-arrow-right"></i> Következő Kör';
+        } else {
+            nextBtn.innerHTML = `<i class="fas fa-hourglass-half"></i> ${ratedCount}/${requiredRatings} Értékelés`;
+        }
+    }
+    
+    // Státusz szöveg frissítése
+    const statusElement = document.getElementById('ratingStatus');
+    if (statusElement) {
+        statusElement.textContent = `${ratedCount} / ${requiredRatings} recept értékelve`;
     }
 }
 
