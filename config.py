@@ -1,186 +1,87 @@
-# config.py - GreenRec Központi Konfiguráció
+# config.py
 """
 GreenRec Konfiguráció
-====================
-Központi konfiguráció minden modul számára.
-Environment-specific beállítások és konstansok.
+==================
+Központi konfigurációs fájl minden beállítással.
+Heroku + PostgreSQL kompatibilis.
 """
 
 import os
-from datetime import timedelta
+from urllib.parse import urlparse
 
 class Config:
-    """Alap konfiguráció osztály"""
+    """Alapértelmezett konfiguráció"""
     
-    # Flask alapbeállítások
-    SECRET_KEY = os.environ.get('SECRET_KEY', 'greenrec-dev-secret-key-change-in-production')
-    DEBUG = os.environ.get('FLASK_ENV') == 'development'
+    # Flask beállítások
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'dev-secret-key-change-in-production'
+    DEBUG = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
     
-    # Session konfiguráció
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=24)
-    SESSION_COOKIE_SECURE = os.environ.get('FLASK_ENV') == 'production'
-    SESSION_COOKIE_HTTPONLY = True
-    
-    # Adatbázis konfiguráció
+    # Adatbázis konfiguráció - Heroku PostgreSQL
     DATABASE_URL = os.environ.get('DATABASE_URL')
     if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+        # Heroku postgres:// -> postgresql:// konverzió
         DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
     
-    # ✅ GREENREC SPECIFIKUS BEÁLLÍTÁSOK
+    # Ajánlórendszer beállítások
+    MAX_LEARNING_ROUNDS = 3  # 3 kör az 5 helyett
+    RECOMMENDATIONS_PER_ROUND = 5  # Precision@5 konzisztencia
+    MIN_RATINGS_FOR_NEXT_ROUND = 3
     
-    # Tanulási rendszer
-    MAX_LEARNING_ROUNDS = 3              # ✅ 3 kör (5 helyett)
-    RECOMMENDATION_COUNT = 5             # ✅ 5 recept/kör (Precision@5)
-    RELEVANCE_THRESHOLD = 4              # Rating >= 4 = releváns
+    # A/B/C teszt beállítások  
+    ABC_GROUPS = ['A', 'B', 'C']
+    GROUP_DISTRIBUTION = [0.33, 0.33, 0.34]  # Egyenletes eloszlás
     
-    # A/B/C teszt konfiguráció
-    GROUP_ALGORITHMS = {
-        'A': 'content_based_hidden',     # ✅ Rejtett pontszámok
-        'B': 'score_enhanced',          # Pontszámok láthatók
-        'C': 'hybrid_xai'               # Hibrid + magyarázatok
-    }
-    
-    # Pontszám súlyozás (ESI inverz normalizálás)
-    SCORE_WEIGHTS = {
-        'ESI': 0.4,    # Környezeti hatás (inverz: 100-ESI)
-        'HSI': 0.4,    # Egészségügyi érték
-        'PPI': 0.2     # Népszerűség
-    }
-    
-    # TF-IDF beállítások
+    # ML paraméterek
     TFIDF_MAX_FEATURES = 1000
     TFIDF_NGRAM_RANGE = (1, 2)
+    SIMILARITY_THRESHOLD = 0.1
     
-    # Adatfájlok
-    DATA_FILES = [
-        'greenrec_dataset.json',
-        'data/greenrec_dataset.json',
-        'data/processed_recipes.csv',
-        'hungarian_recipes_github.csv'
-    ]
+    # Kompozit pontszám súlyok
+    ESI_WEIGHT = 0.4  # Környezeti hatás (inverz)
+    HSI_WEIGHT = 0.4  # Egészségügyi érték
+    PPI_WEIGHT = 0.2  # Népszerűség
     
-    # Képek konfiguráció
-    DEFAULT_RECIPE_IMAGE = 'https://via.placeholder.com/300x200/667eea/white?text=🍽️+Recept'
-    IMAGE_PLACEHOLDER_BASE = 'https://picsum.photos/300/200?random='
+    # UI beállítások
+    HIDE_SCORES_FOR_GROUP_A = True  # A csoport rejtett értékekkel
+    SHOW_IMAGES = True  # Képek megjelenítése
+    ENABLE_SEARCH = True  # Keresőmező engedélyezése
     
-    # Keresési beállítások
-    SEARCH_MIN_SIMILARITY = 0.1
-    SEARCH_MAX_RESULTS = 15
+    # Performance beállítások
+    CACHE_TIMEOUT = 300  # 5 perc cache
+    MAX_SEARCH_RESULTS = 10
     
-    # Metrikák és analytics
-    METRICS_CONFIG = {
-        'precision_recall_k_values': [5, 10, 20],
-        'diversity_features': ['category', 'ingredients', 'sustainability'],
-        'cache_timeout': 300  # 5 perc
-    }
-    
-    # Logging konfiguráció
-    LOG_LEVEL = 'INFO' if not DEBUG else 'DEBUG'
-    LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    
-    # Rate limiting (ha szükséges)
-    RATELIMIT_STORAGE_URL = os.environ.get('REDIS_URL', 'memory://')
-    
-    # File upload (ha később szükséges)
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
-    
-    # Cache konfiguráció
-    CACHE_TYPE = 'simple'
-    CACHE_DEFAULT_TIMEOUT = 300
+    # Adatfájl helyek
+    RECIPE_DATA_FILE = 'data/recipes.json'
+    BACKUP_DATA_FILE = 'greenrec_dataset.json'  # Fallback a gyökérben
 
 class DevelopmentConfig(Config):
-    """Development környezet konfiguráció"""
+    """Fejlesztői konfiguráció"""
     DEBUG = True
-    TESTING = False
-    
-    # Development-specific beállítások
-    LOG_LEVEL = 'DEBUG'
-    SESSION_COOKIE_SECURE = False
-    
-    # Demo adatok használata
-    USE_DEMO_DATA = True
+    DATABASE_URL = os.environ.get('DEV_DATABASE_URL') or 'sqlite:///greenrec_dev.db'
 
 class ProductionConfig(Config):
-    """Production környezet konfiguráció"""
+    """Éles konfiguráció"""
     DEBUG = False
-    TESTING = False
-    
-    # Production-specific beállítások
-    LOG_LEVEL = 'WARNING'
-    SESSION_COOKIE_SECURE = True
-    
-    # Biztonsági fejlesztések
-    WTF_CSRF_ENABLED = True
-    
-    # Cache és teljesítmény
-    CACHE_TYPE = 'redis' if os.environ.get('REDIS_URL') else 'simple'
+    # Heroku automatikusan beállítja a DATABASE_URL-t
 
 class TestingConfig(Config):
-    """Testing környezet konfiguráció"""
+    """Tesztelési konfiguráció"""
     TESTING = True
-    DEBUG = True
-    
-    # Test-specific beállítások
-    WTF_CSRF_ENABLED = False
-    LOGIN_DISABLED = True
-    
-    # In-memory cache tesztekhez
-    CACHE_TYPE = 'null'
+    DATABASE_URL = 'sqlite:///:memory:'
+    MAX_LEARNING_ROUNDS = 2  # Gyorsabb tesztek
 
-# Environment-based konfiguráció kiválasztása
-config_by_name = {
+# Környezet-specifikus konfiguráció kiválasztása
+config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
     'testing': TestingConfig,
     'default': DevelopmentConfig
 }
 
-# Aktuális konfiguráció
-current_config = config_by_name.get(
-    os.environ.get('FLASK_ENV', 'development'),
-    DevelopmentConfig
-)
+def get_config():
+    """Aktuális konfiguráció visszaadása"""
+    env = os.environ.get('FLASK_ENV', 'default')
+    return config.get(env, config['default'])
 
-# Konfiguráció validáció
-def validate_config():
-    """Konfiguráció validálása"""
-    errors = []
-    
-    # Secret key ellenőrzése production-ben
-    if current_config == ProductionConfig:
-        if Config.SECRET_KEY == 'greenrec-dev-secret-key-change-in-production':
-            errors.append("❌ SECRET_KEY must be changed in production!")
-    
-    # Súlyok ellenőrzése
-    total_weight = sum(Config.SCORE_WEIGHTS.values())
-    if abs(total_weight - 1.0) > 0.001:
-        errors.append(f"❌ Score weights must sum to 1.0, got {total_weight}")
-    
-    # Tanulási körök ellenőrzése
-    if Config.MAX_LEARNING_ROUNDS < 1 or Config.MAX_LEARNING_ROUNDS > 10:
-        errors.append(f"❌ MAX_LEARNING_ROUNDS must be 1-10, got {Config.MAX_LEARNING_ROUNDS}")
-    
-    if errors:
-        print("🔧 Configuration Validation Errors:")
-        for error in errors:
-            print(f"  {error}")
-        return False
-    
-    print("✅ Configuration validation passed")
-    return True
-
-# Konfiguráció információk kiírása
-def print_config_info():
-    """Konfiguráció információk kiírása"""
-    print(f"🔧 Configuration: {current_config.__name__}")
-    print(f"🌱 Learning rounds: {Config.MAX_LEARNING_ROUNDS}")
-    print(f"📊 Recommendations per round: {Config.RECOMMENDATION_COUNT}")
-    print(f"🎯 A/B/C groups: {list(Config.GROUP_ALGORITHMS.keys())}")
-    print(f"⚖️ Score weights: ESI={Config.SCORE_WEIGHTS['ESI']}, HSI={Config.SCORE_WEIGHTS['HSI']}, PPI={Config.SCORE_WEIGHTS['PPI']}")
-
-if __name__ == '__main__':
-    # Konfiguráció tesztelése
-    print("🔧 GreenRec Configuration Test")
-    print("=" * 40)
-    print_config_info()
-    validate_config()
+# Globálisan elérhető konfiguráció
+current_config = get_config()
