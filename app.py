@@ -347,6 +347,33 @@ def health():
         logger.error(f"Health check hiba: {e}")
         return jsonify({'status': 'error', 'error': str(e)}), 503
 
+@app.route('/debug/data')
+def debug_data():
+    """Debug endpoint - adatok ellenőrzése"""
+    try:
+        df = data_manager.load_recipe_data()
+        
+        sample_data = {}
+        if df is not None and len(df) > 0:
+            sample_data = df.iloc[0].to_dict()
+            # Csak az első 3 karakter minden stringből (rövidítés)
+            for key, value in sample_data.items():
+                if isinstance(value, str) and len(value) > 50:
+                    sample_data[key] = value[:50] + "..."
+        
+        return jsonify({
+            'status': 'success',
+            'total_recipes': len(df) if df is not None else 0,
+            'columns': list(df.columns) if df is not None else [],
+            'sample_recipe': sample_data,
+            'has_real_data': 'title' in df.columns or 'recipeid' in df.columns if df is not None else False,
+            'file_exists': os.path.exists('greenrec_dataset.json'),
+            'working_dir': os.getcwd()
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @app.errorhandler(404)
 def not_found(error):
     """404 hiba kezelése"""
