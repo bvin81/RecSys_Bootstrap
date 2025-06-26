@@ -1,4 +1,77 @@
-<div class="comparison-tabs">
+{% extends "base.html" %}
+
+{% block title %}📊 Analytics Dashboard - GreenRec{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <!-- Fejléc -->
+    <div class="header-section">
+        <h1 class="page-title">
+            📊 Analytics Dashboard
+        </h1>
+        <p class="page-subtitle">
+            A/B/C Teszt Eredmények és Rendszer Teljesítmény
+        </p>
+    </div>
+
+    <!-- Kulcs statisztikák -->
+    <div class="key-stats">
+        <div class="stat-card participants">
+            <div class="stat-icon">
+                <i class="fas fa-users"></i>
+            </div>
+            <div class="stat-content">
+                <h3>Résztvevők</h3>
+                <p class="stat-number">{{ dashboard.metrics.summary.total_participants or 150 }}</p>
+                <p class="stat-label">felhasználó</p>
+            </div>
+        </div>
+
+        <div class="stat-card completion">
+            <div class="stat-icon">
+                <i class="fas fa-chart-line"></i>
+            </div>
+            <div class="stat-content">
+                <h3>Befejezési Arány</h3>
+                <p class="stat-number">{{ ((dashboard.metrics.summary.overall_completion_rate or 0.86) * 100) | round(0) }}%</p>
+                <p class="stat-label">teljesítette</p>
+            </div>
+        </div>
+
+        <div class="stat-card best-group">
+            <div class="stat-icon">
+                <i class="fas fa-trophy"></i>
+            </div>
+            <div class="stat-content">
+                <h3>Legjobb Csoport</h3>
+                <p class="stat-number">{{ dashboard.metrics.summary.best_performing_group or 'C' }}</p>
+                <p class="stat-label">{{ dashboard.metrics.summary.performance_improvement_percent or 80 }}% javulás</p>
+            </div>
+        </div>
+
+        <div class="stat-card current-user">
+            <div class="stat-icon">
+                <i class="fas fa-user"></i>
+            </div>
+            <div class="stat-content">
+                <h3>Az Ön Csoportja</h3>
+                <p class="stat-number">{{ dashboard.user_info.group or 'A' }}</p>
+                <p class="stat-label">{{ get_group_name(dashboard.user_info.group or 'A') }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- A/B/C Teszt Összehasonlítás -->
+    <div class="abc-comparison">
+        <h2 class="section-title">
+            🔬 A/B/C Teszt Eredmények
+        </h2>
+
+        <div class="comparison-tabs">
             <button class="tab-btn active" onclick="showTab('overview')">
                 <i class="fas fa-chart-bar"></i> Áttekintés
             </button>
@@ -246,54 +319,6 @@
         </div>
     </div>
 
-    <!-- Technikai Részletek -->
-    <div class="technical-details">
-        <h2 class="section-title">
-            🔧 Technikai Részletek
-        </h2>
-
-        <div class="tech-grid">
-            <div class="tech-card">
-                <h4>🤖 Algoritmusok</h4>
-                <ul>
-                    <li><strong>A Csoport:</strong> Tiszta content-based filtering</li>
-                    <li><strong>B Csoport:</strong> Score-enhanced recommendations</li>
-                    <li><strong>C Csoport:</strong> Hybrid + explainable AI</li>
-                </ul>
-            </div>
-
-            <div class="tech-card">
-                <h4>📊 Metrikák</h4>
-                <ul>
-                    <li><strong>Precision@5:</strong> Releváns ajánlások aránya</li>
-                    <li><strong>Recall@5:</strong> Találati arány</li>
-                    <li><strong>F1 Score:</strong> Harmónikus átlag</li>
-                    <li><strong>Diversity:</strong> Változatosság mérése</li>
-                </ul>
-            </div>
-
-            <div class="tech-card">
-                <h4>🔬 Módszertan</h4>
-                <ul>
-                    <li><strong>TF-IDF:</strong> Szöveges hasonlóság számítás</li>
-                    <li><strong>Cosine Similarity:</strong> Vektortér modell</li>
-                    <li><strong>ESI Inverz:</strong> 100-ESI normalizálás</li>
-                    <li><strong>Kompozit Score:</strong> ESI×0.4+HSI×0.4+PPI×0.2</li>
-                </ul>
-            </div>
-
-            <div class="tech-card">
-                <h4>📈 Adatok</h4>
-                <ul>
-                    <li><strong>Receptek:</strong> {{ dashboard.session_stats.total_ratings * 3 or 150 }} db</li>
-                    <li><strong>Értékelések:</strong> {{ (dashboard.metrics.summary.total_participants or 150) * 12 }} db</li>
-                    <li><strong>Tanulási körök:</strong> 3 kör</li>
-                    <li><strong>Min. értékelés:</strong> 3/kör</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-
     <!-- Export és Akciók -->
     <div class="analytics-actions">
         <h2 class="section-title">
@@ -387,7 +412,7 @@ function createMetricsCharts() {
     // Precision Chart
     createBarChart('precisionChart', 'Precision@5 (%)', precisionData, labels, colors);
     
-    // Recall Chart
+    // Recall Chart  
     createBarChart('recallChart', 'Recall@5 (%)', recallData, labels, colors);
     
     // F1 Chart
@@ -1074,43 +1099,6 @@ document.addEventListener('DOMContentLoaded', function() {
     color: var(--danger-color);
 }
 
-.tech-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: var(--spacing-xl);
-    margin-bottom: var(--spacing-2xl);
-}
-
-.tech-card {
-    background: var(--white);
-    border-radius: var(--radius-lg);
-    padding: var(--spacing-xl);
-    box-shadow: var(--shadow-md);
-}
-
-.tech-card h4 {
-    margin-bottom: var(--spacing-lg);
-    color: var(--primary-color);
-}
-
-.tech-card ul {
-    list-style: none;
-    padding: 0;
-}
-
-.tech-card li {
-    margin-bottom: var(--spacing-md);
-    padding-left: var(--spacing-lg);
-    position: relative;
-}
-
-.tech-card li::before {
-    content: '▶';
-    position: absolute;
-    left: 0;
-    color: var(--primary-color);
-}
-
 .actions-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -1199,10 +1187,6 @@ document.addEventListener('DOMContentLoaded', function() {
         grid-template-columns: repeat(2, 1fr);
     }
     
-    .tech-grid {
-        grid-template-columns: 1fr;
-    }
-    
     .actions-grid {
         grid-template-columns: 1fr;
     }
@@ -1218,93 +1202,4 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 }
 
-@media (max-width: 480px) {
-    .performance-metrics {
-        grid-template-columns: 1fr;
-    }
-    
-    .stat-card {
-        flex-direction: column;
-        text-align: center;
-    }
-    
-    .finding-card {
-        flex-direction: column;
-        text-align: center;
-    }
-}
-</style>
-{% endblock %}{% extends "base.html" %}
-
-{% block title %}📊 Analytics Dashboard - GreenRec{% endblock %}
-
-{% block extra_head %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
 {% endblock %}
-
-{% block content %}
-<div class="container">
-    <!-- Fejléc -->
-    <div class="header-section">
-        <h1 class="page-title">
-            📊 Analytics Dashboard
-        </h1>
-        <p class="page-subtitle">
-            A/B/C Teszt Eredmények és Rendszer Teljesítmény
-        </p>
-    </div>
-
-    <!-- Kulcs statisztikák -->
-    <div class="key-stats">
-        <div class="stat-card participants">
-            <div class="stat-icon">
-                <i class="fas fa-users"></i>
-            </div>
-            <div class="stat-content">
-                <h3>Résztvevők</h3>
-                <p class="stat-number">{{ dashboard.metrics.summary.total_participants or 150 }}</p>
-                <p class="stat-label">felhasználó</p>
-            </div>
-        </div>
-
-        <div class="stat-card completion">
-            <div class="stat-icon">
-                <i class="fas fa-chart-line"></i>
-            </div>
-            <div class="stat-content">
-                <h3>Befejezési Arány</h3>
-                <p class="stat-number">{{ ((dashboard.metrics.summary.completion_rate or 0.86) * 100) | round(0) }}%</p>
-                <p class="stat-label">teljesítette</p>
-            </div>
-        </div>
-
-        <div class="stat-card best-group">
-            <div class="stat-icon">
-                <i class="fas fa-trophy"></i>
-            </div>
-            <div class="stat-content">
-                <h3>Legjobb Csoport</h3>
-                <p class="stat-number">{{ dashboard.metrics.summary.best_performing_group or 'C' }}</p>
-                <p class="stat-label">{{ dashboard.metrics.summary.performance_improvement_percent or 80 }}% javulás</p>
-            </div>
-        </div>
-
-        <div class="stat-card current-user">
-            <div class="stat-icon">
-                <i class="fas fa-user"></i>
-            </div>
-            <div class="stat-content">
-                <h3>Az Ön Csoportja</h3>
-                <p class="stat-number">{{ dashboard.user_info.group or 'A' }}</p>
-                <p class="stat-label">{{ get_group_name(dashboard.user_info.group or 'A') }}</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- A/B/C Teszt Összehasonlítás -->
-    <div class="abc-comparison">
-        <h2 class="section-title">
-            🔬 A/B/C Teszt Eredmények
-        </h2>
-
-        <div class="comparison-tabs">
