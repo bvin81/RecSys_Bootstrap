@@ -45,13 +45,27 @@
             top: 10px;
             right: 10px;
             border-radius: 20px;
-            padding: 5px 10px;
-            font-size: 0.8rem;
+            padding: 8px 12px;
+            font-size: 0.85rem;
             font-weight: bold;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
         }
-        .hsi-badge { background: #28a745; color: white; }
-        .esi-badge { background: #17a2b8; color: white; }
-        .ppi-badge { background: #ffc107; color: black; }
+        .hsi-badge { 
+            background: rgba(40, 167, 69, 0.9); 
+            color: white; 
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        .esi-badge { 
+            background: rgba(23, 162, 184, 0.9); 
+            color: white; 
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
+        .ppi-badge { 
+            background: rgba(255, 193, 7, 0.9); 
+            color: black; 
+            border: 2px solid rgba(255, 255, 255, 0.3);
+        }
         .btn-recommend {
             background: linear-gradient(135deg, #28a745, #20c997);
             border: none;
@@ -91,7 +105,7 @@
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-light">
         <div class="container">
-            <a class="navbar-brand fw-bold text-success" href="#">🌱 GreenRec</a>
+            <a class="navbar-brand fw-bold text-success" href="#"> GreenRec</a>
             <div class="navbar-nav ms-auto">
                 <a class="nav-link" href="{{ url_for('stats') }}">Statisztikák</a>
                 <a class="nav-link text-danger" href="{{ url_for('logout') }}">Kilépés</a>
@@ -112,9 +126,9 @@
                     {% if user_group == 'C' %}
                         <div class="explanation">
                             <strong>ℹ️ Pontszámok magyarázata:</strong><br>
-                            <strong>HSI (Health Score):</strong> Egészségességi mutató - magasabb érték egészségesebb ételt jelent<br>
-                            <strong>ESI (Environmental Score):</strong> Környezeti hatás - alacsonyabb érték környezetbarátabb<br>
-                            <strong>PPI (Popularity Score):</strong> Népszerűségi mutató - magasabb érték népszerűbb receptet jelent
+                            <strong>❤️ HSI (Health Score):</strong> Egészségességi mutató - magasabb érték egészségesebb ételt jelent<br>
+                            <strong>🌍 ESI (Environmental Score):</strong> Környezeti hatás - alacsonyabb érték környezetbarátabb<br>
+                            <strong>⭐ PPI (Popularity Score):</strong> Népszerűségi mutató - magasabb érték népszerűbb receptet jelent
                         </div>
                     {% endif %}
                 </div>
@@ -206,14 +220,14 @@
                                 
                                 <!-- Pontszámok megjelenítése csoporttól függően -->
                                 ${userGroup !== 'A' ? `
-                                    <div class="score-badge hsi-badge" style="top: 10px; right: 10px;">
-                                        HSI: ${recipe.hsi}
+                                    <div class="score-badge hsi-badge" style="top: 10px; right: 10px;" title="Egészségességi mutató">
+                                        ❤️ ${recipe.hsi}
                                     </div>
-                                    <div class="score-badge esi-badge" style="top: 45px; right: 10px;">
-                                        ESI: ${recipe.esi}
+                                    <div class="score-badge esi-badge" style="top: 55px; right: 10px;" title="Környezeti hatás">
+                                        🌍 ${recipe.esi}
                                     </div>
-                                    <div class="score-badge ppi-badge" style="top: 80px; right: 10px;">
-                                        PPI: ${recipe.ppi}
+                                    <div class="score-badge ppi-badge" style="top: 100px; right: 10px;" title="Népszerűségi mutató">
+                                        ⭐ ${recipe.ppi}
                                     </div>
                                 ` : ''}
                                 
