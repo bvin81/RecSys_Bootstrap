@@ -1,8 +1,7 @@
 import os
 import logging
 import json
-from flask import Flask, request, render_template, redirect, url_for, session, flash, jsonify
-
+from flask import Flask, request, render_template, redirect, url_for, session, flash, jsonify, Response
 
 # Logging beállítása
 logging.basicConfig(level=logging.INFO)
@@ -92,7 +91,7 @@ class GreenRecRecommender:
                 count = cur.fetchone()[0]
                 logger.info(f"✅ Recipes tábla létezik, {count} recept található")
             except psycopg2.errors.UndefinedTable:
-                logger.warning("⚠️  Recipes tábla nem létezik: {}".format(str(psycopg2.errors.UndefinedTable)))
+                logger.warning("⚠️  Recipes tábla nem létezik")
                 logger.warning("⚠️  Nincs recept adat, dummy adatok létrehozása")
                 self.create_dummy_data()
                 return
@@ -128,7 +127,7 @@ class GreenRecRecommender:
         dummy_recipes = [
             {
                 'id': 1,
-                'title': 'Zöldséges quinoa salát',
+                'title': 'Zöldséges quinoa saláta',
                 'hsi': 85.5,
                 'esi': 45.2,
                 'ppi': 78.0,
@@ -183,7 +182,7 @@ class GreenRecRecommender:
         except Exception as e:
             logger.error(f"❌ Adatok előfeldolgozási hiba: {e}")
     
-    def get_recommendations(self, user_preferences=None, num_recommendations=3):
+    def get_recommendations(self, user_preferences=None, num_recommendations=5):
         """Ajánlások generálása hibakezeléssel"""
         try:
             if self.recipes_df is None or len(self.recipes_df) == 0:
@@ -229,6 +228,43 @@ try:
 except Exception as e:
     logger.error(f"❌ Ajánlórendszer inicializálási hiba: {e}")
     recommender = None
+
+# ===== RECOMMENDATION LOGGING =====
+def log_recommendations(user_id, recommendations):
+    """Ajánlások rögzítése az adatbázisba metrikák számításához"""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return
+            
+        cur = conn.cursor()
+        
+        # Recommendation sessions tábla létrehozása ha nem létezik
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS recommendation_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                session_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                recommendations_json TEXT NOT NULL
+            );
+        """)
+        
+        # Ajánlások mentése JSON formátumban
+        recommendations_json = json.dumps(recommendations, ensure_ascii=False)
+        
+        cur.execute("""
+            INSERT INTO recommendation_sessions (user_id, recommendations_json)
+            VALUES (%s, %s)
+        """, (user_id, recommendations_json))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        logger.info(f"✅ Ajánlások rögzítve user_id={user_id}, {len(recommendations)} recept")
+        
+    except Exception as e:
+        logger.error(f"❌ Ajánlás logging hiba: {e}")
 
 # ===== AUTHENTICATION FUNCTIONS =====
 def check_user_credentials(username, password):
@@ -395,7 +431,7 @@ def logout():
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
-    """AJAX ajánlások endpoint"""
+    """AJAX ajánlások endpoint BŐVÍTETT LOGGING-GAL"""
     if 'user_id' not in session:
         return jsonify({'error': 'Nincs bejelentkezve'}), 401
     
@@ -404,6 +440,10 @@ def recommend():
             return jsonify({'error': 'Ajánlórendszer nem elérhető'}), 500
             
         recommendations = recommender.get_recommendations(num_recommendations=5)
+        
+        # ✅ ÚJ: Ajánlások logging-ja az adatbázisba
+        log_recommendations(session['user_id'], recommendations)
+        
         return jsonify({'recommendations': recommendations})
         
     except Exception as e:
@@ -492,6 +532,13 @@ def stats():
         except:
             stats['total_recipes'] = len(recommender.recipes_df) if recommender and recommender.recipes_df is not None else 0
         
+        try:
+            # Összes választás
+            cur.execute("SELECT COUNT(*) FROM user_choices")
+            stats['total_choices'] = cur.fetchone()[0]
+        except:
+            stats['total_choices'] = 0
+        
         conn.close()
         return render_template('stats.html', stats=stats)
         
@@ -500,36 +547,7 @@ def stats():
         flash('Hiba történt a statisztikák betöltésekor', 'error')
         return render_template('stats.html', stats={})
 
-@app.route('/health')
-def health():
-    """Health check endpoint"""
-    try:
-        db_status = "OK" if get_db_connection() is not None else "ERROR"
-        recommender_status = "OK" if recommender is not None else "ERROR"
-        
-        return jsonify({
-            'status': 'OK',
-            'database': db_status,
-            'recommender': recommender_status,
-            'timestamp': datetime.now().isoformat()
-        })
-    except Exception as e:
-        return jsonify({
-            'status': 'ERROR',
-            'error': str(e),
-            'timestamp': datetime.now().isoformat()
-        }), 500
-
-# ===== ERROR HANDLERS =====
-@app.errorhandler(404)
-def not_found_error(error):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return render_template('500.html'), 500
-
-
+# ===== EXPORT ROUTES =====
 @app.route('/export/users')
 def export_users():
     """Felhasználók exportálása CSV-be"""
@@ -570,7 +588,6 @@ def export_users():
             output.write(f'{user[0]},{user[1]},{user[2]},{user[3]},{user[4]}\n')
         
         # Response
-        from flask import Response
         response = Response(
             output.getvalue(),
             mimetype='text/csv',
@@ -632,7 +649,6 @@ def export_choices():
             output.write(f'{choice[0]},{choice[1]},{choice[2]},"{title}",{choice[4]},{choice[5]},{choice[6]},{choice[7]},{choice[8]},{choice[9]}\n')
         
         # Response
-        from flask import Response
         response = Response(
             output.getvalue(),
             mimetype='text/csv',
@@ -643,6 +659,73 @@ def export_choices():
         
     except Exception as e:
         logger.error(f"❌ Choices export hiba: {e}")
+        return f"Export hiba: {str(e)}", 500
+
+@app.route('/export/recommendations')
+def export_recommendations():
+    """Ajánlási szeszók exportálása"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return "Adatbázis kapcsolati hiba", 500
+        
+        cur = conn.cursor()
+        
+        # Ajánlási szeszók lekérdezése
+        cur.execute("""
+            SELECT 
+                rs.id as session_id,
+                u.username,
+                u.group_name,
+                rs.session_timestamp,
+                rs.recommendations_json,
+                CASE 
+                    WHEN u.username LIKE 'user_%' THEN 'teszt'
+                    ELSE 'valós'
+                END as user_type
+            FROM recommendation_sessions rs
+            JOIN users u ON rs.user_id = u.id
+            ORDER BY rs.session_timestamp
+        """)
+        
+        sessions = cur.fetchall()
+        conn.close()
+        
+        # CSV generálás
+        import io
+        output = io.StringIO()
+        output.write('session_id,username,group_name,session_timestamp,recipe_1_id,recipe_1_title,recipe_2_id,recipe_2_title,recipe_3_id,recipe_3_title,recipe_4_id,recipe_4_title,recipe_5_id,recipe_5_title,user_type\n')
+        
+        for session in sessions:
+            recommendations = json.loads(session[4])
+            
+            # 5 recept kicsomagolása
+            recipe_data = []
+            for i in range(5):
+                if i < len(recommendations):
+                    recipe_data.extend([
+                        recommendations[i]['id'],
+                        recommendations[i]['title'].replace(',', ';').replace('"', '')
+                    ])
+                else:
+                    recipe_data.extend(['', ''])
+            
+            output.write(f'{session[0]},{session[1]},{session[2]},{session[3]},{",".join(map(str, recipe_data))},{session[5]}\n')
+        
+        # Response
+        response = Response(
+            output.getvalue(),
+            mimetype='text/csv',
+            headers={'Content-Disposition': 'attachment; filename=greenrec_recommendations.csv'}
+        )
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"❌ Recommendations export hiba: {e}")
         return f"Export hiba: {str(e)}", 500
 
 @app.route('/export/json')
@@ -699,6 +782,28 @@ def export_json():
                 'user_type': row[9]
             })
         
+        # Ajánlási szeszók (ha léteznek)
+        try:
+            cur.execute("""
+                SELECT rs.id, u.username, u.group_name, rs.session_timestamp, rs.recommendations_json,
+                       CASE WHEN u.username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
+                FROM recommendation_sessions rs
+                JOIN users u ON rs.user_id = u.id
+                ORDER BY rs.session_timestamp
+            """)
+            recommendations_data = []
+            for row in cur.fetchall():
+                recommendations_data.append({
+                    'session_id': row[0],
+                    'username': row[1],
+                    'group_name': row[2],
+                    'session_timestamp': str(row[3]),
+                    'recommendations': json.loads(row[4]),
+                    'user_type': row[5]
+                })
+        except:
+            recommendations_data = []
+        
         # Statisztikák
         cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name")
         stats_users = dict(cur.fetchall())
@@ -719,11 +824,13 @@ def export_json():
             'summary': {
                 'total_users': len(users_data),
                 'total_choices': len(choices_data),
+                'total_recommendation_sessions': len(recommendations_data),
                 'users_by_group': stats_users,
                 'choices_by_group': stats_choices
             },
             'users': users_data,
-            'choices': choices_data
+            'choices': choices_data,
+            'recommendation_sessions': recommendations_data
         }
         
         # JSON Response
@@ -738,6 +845,36 @@ def export_json():
     except Exception as e:
         logger.error(f"❌ JSON export hiba: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    try:
+        db_status = "OK" if get_db_connection() is not None else "ERROR"
+        recommender_status = "OK" if recommender is not None else "ERROR"
+        
+        return jsonify({
+            'status': 'OK',
+            'database': db_status,
+            'recommender': recommender_status,
+            'timestamp': datetime.now().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'ERROR',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+# ===== ERROR HANDLERS =====
+@app.errorhandler(404)
+def not_found_error(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('500.html'), 500
+
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
