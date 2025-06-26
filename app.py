@@ -1,35 +1,62 @@
-# app.py - GreenRec Final Implementation
+# app.py - GreenRec Heroku Production Version
 """
 GreenRec - Fenntartható Receptajánló Rendszer
+🚀 Heroku + PostgreSQL + GitHub Deployment Ready
 ✅ 5 recept ajánlás (Precision@5 konzisztencia)
-✅ Dinamikus tanulási flow (többkörös ajánlás)
-✅ Inverz ESI normalizálás (100-ESI)
-✅ Helyes kompozit pontszám (ESI*0.4+HSI*0.4+PPI*0.2)
-✅ Javított UI (piktogramok, csillag feedback)
-✅ A/B/C teszt és tanulási görbék
+✅ Dinamikus tanulási flow + A/B/C teszt
+✅ Inverz ESI normalizálás + helyes kompozit pontszám
+✅ PostgreSQL adatbázis integráció
+✅ Production-ready konfiguráció
 """
 
-from flask import Flask, request, jsonify, session, render_template_string
-import pandas as pd
-import numpy as np
+import os
 import json
 import random
-from datetime import datetime
 import hashlib
+import logging
+from datetime import datetime
+from collections import defaultdict, Counter
+
+import pandas as pd
+import numpy as np
+from flask import Flask, request, jsonify, session, render_template_string
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from collections import defaultdict, Counter
-import logging
+
+# PostgreSQL import
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+    POSTGRES_AVAILABLE = True
+except ImportError:
+    print("⚠️ psycopg2 not available, using fallback storage")
+    POSTGRES_AVAILABLE = False
 
 # Flask alkalmazás inicializálása
 app = Flask(__name__)
-app.secret_key = 'greenrec-secret-key-2025'
 
-# GLOBÁLIS KONFIGURÁCIÓ
+# 🔧 HEROKU KONFIGURÁCIÓ
+app.secret_key = os.environ.get('SECRET_KEY', 'greenrec-fallback-secret-key-2025')
+
+# Environment-based configuration
+DEBUG_MODE = os.environ.get('FLASK_ENV') == 'development'
+PORT = int(os.environ.get('PORT', 5000))
+
+# PostgreSQL konfiguráció
+DATABASE_URL = os.environ.get('DATABASE_URL')
+if DATABASE_URL and DATABASE_URL.startswith('postgres://'):
+    # Heroku Postgres URL fix
+    DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+
+# ALKALMAZÁS KONSTANSOK
 RECOMMENDATION_COUNT = 5  # ✅ 5 recept ajánlás (Precision@5 konzisztencia)
 RELEVANCE_THRESHOLD = 4   # Rating >= 4 = releváns
 MAX_LEARNING_ROUNDS = 5   # Maximum tanulási körök
-GROUP_ALGORITHMS = {'A': 'content_based', 'B': 'score_enhanced', 'C': 'hybrid_xai'}
+GROUP_ALGORITHMS = {
+    'A': 'content_based', 
+    'B': 'score_enhanced', 
+    'C': 'hybrid_xai'
+}
 
 # Globális változók
 recipes_df = None
@@ -39,51 +66,286 @@ user_sessions = {}
 analytics_data = defaultdict(list)
 
 # Logging setup
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO if not DEBUG_MODE else logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+# 🗄️ POSTGRESQL ADATBÁZIS FUNKCIÓK
+
+def get_db_connection():
+    """PostgreSQL kapcsolat létrehozása"""
+    try:
+        if DATABASE_URL and POSTGRES_AVAILABLE:
+            conn = psycopg2.connect(DATABASE_URL, sslmode='require')
+            return conn
+        else:
+            logger.warning("⚠️ PostgreSQL nem elérhető, memória-alapú tárolás")
+            return None
+    except Exception as e:
+        logger.error(f"❌ Adatbázis kapcsolat hiba: {str(e)}")
+        return None
+
+def init_database():
+    """Adatbázis táblák inicializálása"""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    
+    try:
+        cur = conn.cursor()
+        
+        # User sessions tábla
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                user_id VARCHAR(100) PRIMARY KEY,
+                user_group VARCHAR(1) NOT NULL,
+                learning_round INTEGER DEFAULT 1,
+                start_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                last_activity TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                completed BOOLEAN DEFAULT FALSE
+            )
+        """)
+        
+        # Recipe ratings tábla
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS recipe_ratings (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(100) NOT NULL,
+                recipe_id VARCHAR(100) NOT NULL,
+                rating INTEGER NOT NULL CHECK (rating >= 1 AND rating <= 5),
+                learning_round INTEGER NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, recipe_id, learning_round)
+            )
+        """)
+        
+        # Analytics tábla
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS analytics_metrics (
+                id SERIAL PRIMARY KEY,
+                user_id VARCHAR(100) NOT NULL,
+                user_group VARCHAR(1) NOT NULL,
+                learning_round INTEGER NOT NULL,
+                precision_at_5 FLOAT,
+                recall_at_5 FLOAT,
+                f1_at_5 FLOAT,
+                avg_rating FLOAT,
+                relevant_count INTEGER,
+                recommended_count INTEGER,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        logger.info("✅ PostgreSQL táblák inicializálva")
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Adatbázis inicializálás hiba: {str(e)}")
+        conn.rollback()
+        conn.close()
+        return False
+
+def save_user_session_db(user_id, user_group, learning_round=1):
+    """Felhasználói session mentése PostgreSQL-be"""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO user_sessions (user_id, user_group, learning_round, last_activity)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id) 
+            DO UPDATE SET learning_round = %s, last_activity = CURRENT_TIMESTAMP
+        """, (user_id, user_group, learning_round, learning_round))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Session mentés hiba: {str(e)}")
+        conn.rollback()
+        conn.close()
+        return False
+
+def save_rating_db(user_id, recipe_id, rating, learning_round):
+    """Értékelés mentése PostgreSQL-be"""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO recipe_ratings (user_id, recipe_id, rating, learning_round)
+            VALUES (%s, %s, %s, %s)
+            ON CONFLICT (user_id, recipe_id, learning_round)
+            DO UPDATE SET rating = %s, timestamp = CURRENT_TIMESTAMP
+        """, (user_id, recipe_id, rating, learning_round, rating))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Rating mentés hiba: {str(e)}")
+        conn.rollback()
+        conn.close()
+        return False
+
+def get_user_ratings_db(user_id, learning_round=None):
+    """Felhasználó értékeléseinek lekérése PostgreSQL-ből"""
+    conn = get_db_connection()
+    if not conn:
+        return {}
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        
+        if learning_round:
+            cur.execute("""
+                SELECT recipe_id, rating 
+                FROM recipe_ratings 
+                WHERE user_id = %s AND learning_round = %s
+            """, (user_id, learning_round))
+        else:
+            cur.execute("""
+                SELECT recipe_id, rating 
+                FROM recipe_ratings 
+                WHERE user_id = %s
+            """, (user_id,))
+        
+        ratings = {row['recipe_id']: row['rating'] for row in cur.fetchall()}
+        
+        cur.close()
+        conn.close()
+        return ratings
+        
+    except Exception as e:
+        logger.error(f"❌ Ratings lekérés hiba: {str(e)}")
+        conn.close()
+        return {}
+
+def save_metrics_db(user_id, user_group, learning_round, metrics):
+    """Metrikák mentése PostgreSQL-be"""
+    conn = get_db_connection()
+    if not conn:
+        return False
+    
+    try:
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO analytics_metrics 
+            (user_id, user_group, learning_round, precision_at_5, recall_at_5, 
+             f1_at_5, avg_rating, relevant_count, recommended_count)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            user_id, user_group, learning_round,
+            metrics.get('precision_at_5', 0),
+            metrics.get('recall_at_5', 0), 
+            metrics.get('f1_at_5', 0),
+            metrics.get('avg_rating', 0),
+            metrics.get('relevant_count', 0),
+            metrics.get('recommended_count', 0)
+        ))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Metrikák mentés hiba: {str(e)}")
+        conn.rollback()
+        conn.close()
+        return False
+
+def get_analytics_db():
+    """Analytics adatok lekérése PostgreSQL-ből"""
+    conn = get_db_connection()
+    if not conn:
+        return {}
+    
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT user_group, learning_round, precision_at_5, recall_at_5, 
+                   f1_at_5, avg_rating, timestamp
+            FROM analytics_metrics
+            ORDER BY user_group, learning_round, timestamp
+        """)
+        
+        results = cur.fetchall()
+        
+        # Csoportosítás
+        analytics = defaultdict(list)
+        for row in results:
+            analytics[f"group_{row['user_group']}"].append({
+                'round': row['learning_round'],
+                'metrics': {
+                    'precision_at_5': float(row['precision_at_5']) if row['precision_at_5'] else 0,
+                    'recall_at_5': float(row['recall_at_5']) if row['recall_at_5'] else 0,
+                    'f1_at_5': float(row['f1_at_5']) if row['f1_at_5'] else 0,
+                    'avg_rating': float(row['avg_rating']) if row['avg_rating'] else 0
+                },
+                'timestamp': row['timestamp'].isoformat() if row['timestamp'] else None
+            })
+        
+        cur.close()
+        conn.close()
+        return dict(analytics)
+        
+    except Exception as e:
+        logger.error(f"❌ Analytics lekérés hiba: {str(e)}")
+        conn.close()
+        return {}
+
+# 🚀 ALKALMAZÁS INICIALIZÁLÁS
 
 def ensure_initialized():
     """Rendszer inicializálása"""
     global recipes_df, tfidf_vectorizer, tfidf_matrix
     
     if recipes_df is None:
-        logger.info("🚀 GreenRec rendszer inicializálása...")
+        logger.info("🚀 GreenRec rendszer inicializálása Heroku-n...")
+        
+        # PostgreSQL inicializálás
+        if POSTGRES_AVAILABLE:
+            init_database()
         
         try:
-            # JSON fájl betöltése
-            possible_files = ['greenrec_dataset.json', 'data/greenrec_dataset.json', 'recipes.json']
-            data = None
-            
-            for filename in possible_files:
-                try:
-                    with open(filename, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                    logger.info(f"✅ Adatfájl betöltve: {filename}")
-                    break
-                except FileNotFoundError:
-                    continue
-            
-            if data is None:
-                # Fallback adatok generálása
-                logger.warning("⚠️ Adatfájl nem található, demo adatok generálása...")
-                data = generate_demo_data()
+            # JSON fájl betöltése (GitHub repository-ból)
+            recipe_data = load_recipe_data()
             
             # DataFrame létrehozása
-            recipes_df = pd.DataFrame(data)
+            recipes_df = pd.DataFrame(recipe_data)
             
             # ✅ ESI INVERZ NORMALIZÁLÁS IMPLEMENTÁLÁSA
             if 'ESI' in recipes_df.columns:
                 # ESI normalizálás 0-100 közé
                 esi_min = recipes_df['ESI'].min()
                 esi_max = recipes_df['ESI'].max()
-                recipes_df['ESI_normalized'] = 100 * (recipes_df['ESI'] - esi_min) / (esi_max - esi_min)
+                if esi_max > esi_min:
+                    recipes_df['ESI_normalized'] = 100 * (recipes_df['ESI'] - esi_min) / (esi_max - esi_min)
+                else:
+                    recipes_df['ESI_normalized'] = 50  # Default ha minden ESI ugyanaz
                 
                 # ✅ INVERZ ESI: 100 - normalizált_ESI (magasabb ESI = rosszabb környezetterhelés)
                 recipes_df['ESI_final'] = 100 - recipes_df['ESI_normalized']
             else:
-                recipes_df['ESI_final'] = 50  # Default value
+                recipes_df['ESI_final'] = np.random.uniform(30, 80, len(recipes_df))
             
-            # HSI és PPI eredeti értékek megtartása (már 0-100 között vannak)
+            # HSI és PPI eredeti értékek megtartása
             if 'HSI' not in recipes_df.columns:
                 recipes_df['HSI'] = np.random.uniform(30, 95, len(recipes_df))
             if 'PPI' not in recipes_df.columns:
@@ -96,33 +358,74 @@ def ensure_initialized():
                 recipes_df['PPI'] * 0.2           # Népszerűségi
             ).round(1)
             
-            # Szükséges oszlopok ellenőrzése és kiegészítése
-            required_columns = ['name', 'category', 'ingredients']
-            for col in required_columns:
-                if col not in recipes_df.columns:
-                    if col == 'name':
-                        recipes_df['name'] = [f"Recept {i+1}" for i in range(len(recipes_df))]
-                    elif col == 'category':
-                        categories = ['Főétel', 'Leves', 'Saláta', 'Desszert', 'Snack']
-                        recipes_df['category'] = [random.choice(categories) for _ in range(len(recipes_df))]
-                    elif col == 'ingredients':
-                        recipes_df['ingredients'] = ["hagyma, fokhagyma, paradicsom" for _ in range(len(recipes_df))]
-            
-            # ID oszlop hozzáadása ha nincs
-            if 'id' not in recipes_df.columns and 'recipeid' not in recipes_df.columns:
-                recipes_df['recipeid'] = [f"recipe_{i+1}" for i in range(len(recipes_df))]
+            # Szükséges oszlopok ellenőrzése
+            ensure_required_columns()
             
             # TF-IDF setup
             setup_tfidf()
             
-            logger.info(f"✅ {len(recipes_df)} recept betöltve, TF-IDF inicializálva")
-            logger.info(f"📊 Kompozit pontszám tartomány: {recipes_df['composite_score'].min():.1f} - {recipes_df['composite_score'].max():.1f}")
+            logger.info(f"✅ {len(recipes_df)} recept betöltve Heroku-n")
+            logger.info(f"📊 Kompozit pontszám: {recipes_df['composite_score'].min():.1f} - {recipes_df['composite_score'].max():.1f}")
             
         except Exception as e:
             logger.error(f"❌ Inicializálási hiba: {str(e)}")
             # Fallback: demo adatok
             recipes_df = pd.DataFrame(generate_demo_data())
+            ensure_required_columns()
             setup_tfidf()
+
+def load_recipe_data():
+    """Recept adatok betöltése (GitHub vagy környezeti változó)"""
+    
+    # 1. Környezeti változóból (Heroku Config Vars)
+    recipe_data_env = os.environ.get('RECIPE_DATA_JSON')
+    if recipe_data_env:
+        try:
+            return json.loads(recipe_data_env)
+        except Exception as e:
+            logger.error(f"❌ Környezeti változó JSON hiba: {str(e)}")
+    
+    # 2. Fájlból (GitHub repository)
+    possible_files = [
+        'greenrec_dataset.json',
+        'data/greenrec_dataset.json', 
+        'recipes.json',
+        'data/recipes.json'
+    ]
+    
+    for filename in possible_files:
+        try:
+            if os.path.exists(filename):
+                with open(filename, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                logger.info(f"✅ Recept adatok betöltve: {filename}")
+                return data
+        except Exception as e:
+            logger.warning(f"⚠️ Fájl betöltés hiba ({filename}): {str(e)}")
+            continue
+    
+    # 3. Fallback: demo adatok
+    logger.warning("⚠️ Recept fájl nem található, demo adatok generálása...")
+    return generate_demo_data()
+
+def ensure_required_columns():
+    """Szükséges oszlopok ellenőrzése és kiegészítése"""
+    global recipes_df
+    
+    required_columns = ['name', 'category', 'ingredients']
+    for col in required_columns:
+        if col not in recipes_df.columns:
+            if col == 'name':
+                recipes_df['name'] = [f"Recept {i+1}" for i in range(len(recipes_df))]
+            elif col == 'category':
+                categories = ['Főétel', 'Leves', 'Saláta', 'Desszert', 'Snack', 'Reggeli']
+                recipes_df['category'] = [random.choice(categories) for _ in range(len(recipes_df))]
+            elif col == 'ingredients':
+                recipes_df['ingredients'] = ["hagyma, fokhagyma, paradicsom" for _ in range(len(recipes_df))]
+    
+    # ID oszlop hozzáadása ha nincs
+    if 'id' not in recipes_df.columns and 'recipeid' not in recipes_df.columns:
+        recipes_df['recipeid'] = [f"recipe_{i+1}" for i in range(len(recipes_df))]
 
 def setup_tfidf():
     """TF-IDF inicializálása"""
@@ -136,7 +439,11 @@ def setup_tfidf():
             content.append(text.lower())
         
         # TF-IDF
-        tfidf_vectorizer = TfidfVectorizer(max_features=1000, stop_words=None)
+        tfidf_vectorizer = TfidfVectorizer(
+            max_features=min(1000, len(content) * 10),
+            stop_words=None,
+            ngram_range=(1, 2)
+        )
         tfidf_matrix = tfidf_vectorizer.fit_transform(content)
         logger.info("✅ TF-IDF mátrix inicializálva")
         
@@ -146,27 +453,30 @@ def setup_tfidf():
 def generate_demo_data():
     """Demo adatok generálása"""
     categories = ['Főétel', 'Leves', 'Saláta', 'Desszert', 'Snack', 'Reggeli']
-    ingredients_list = [
-        'hagyma, fokhagyma, paradicsom, paprika',
-        'csirkemell, brokkoli, rizs, szójaszósz',
-        'saláta, uborka, paradicsom, olívaolaj',
-        'tojás, liszt, cukor, vaj, vanília',
-        'mandula, dió, méz, zabpehely'
+    ingredients_lists = [
+        'hagyma, fokhagyma, paradicsom, paprika, olívaolaj',
+        'csirkemell, brokkoli, rizs, szójaszósz, gyömbér',
+        'saláta, uborka, paradicsom, olívaolaj, citrom',
+        'tojás, liszt, cukor, vaj, vanília, csokoládé',
+        'mandula, dió, méz, zabpehely, áfonya',
+        'avokádó, spenót, banán, chia mag, kókusztej'
     ]
     
     demo_recipes = []
-    for i in range(50):
+    for i in range(100):  # Több demo recept
         demo_recipes.append({
-            'recipeid': f'recipe_{i+1}',
+            'recipeid': f'demo_recipe_{i+1}',
             'name': f'Demo Recept {i+1}',
             'category': random.choice(categories),
-            'ingredients': random.choice(ingredients_list),
+            'ingredients': random.choice(ingredients_lists),
             'ESI': random.uniform(10, 90),  # Környezeti hatás (magasabb = rosszabb)
             'HSI': random.uniform(30, 95),  # Egészségügyi (magasabb = jobb)
             'PPI': random.uniform(20, 90)   # Népszerűségi (magasabb = jobb)
         })
     
     return demo_recipes
+
+# 🎯 FELHASZNÁLÓI FUNKCIÓK
 
 def get_user_group(user_id):
     """Determinisztikus A/B/C csoport kiosztás"""
@@ -176,13 +486,16 @@ def get_user_group(user_id):
 def initialize_user_session():
     """Felhasználói session inicializálása"""
     if 'user_id' not in session:
-        session['user_id'] = f"user_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{random.randint(1000, 9999)}"
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        session['user_id'] = f"user_{timestamp}_{random.randint(1000, 9999)}"
         session['user_group'] = get_user_group(session['user_id'])
         session['learning_round'] = 1
-        session['ratings'] = {}
         session['start_time'] = datetime.now().isoformat()
         
-        # Globális tracking
+        # PostgreSQL-be mentés
+        save_user_session_db(session['user_id'], session['user_group'], 1)
+        
+        # Memória tracking
         user_sessions[session['user_id']] = {
             'group': session['user_group'],
             'start_time': session['start_time'],
@@ -191,11 +504,17 @@ def initialize_user_session():
         
         logger.info(f"👤 Új felhasználó: {session['user_id']}, Csoport: {session['user_group']}")
     
-    return session['user_id'], session['user_group'], session['learning_round']
+    return session['user_id'], session['user_group'], session.get('learning_round', 1)
 
-def get_personalized_recommendations(user_id, user_group, learning_round, previous_ratings, n=5):
+def get_personalized_recommendations(user_id, user_group, learning_round, n=5):
     """Személyre szabott ajánlások generálása"""
     ensure_initialized()
+    
+    # Előző értékelések lekérése (PostgreSQL vagy session)
+    if POSTGRES_AVAILABLE:
+        previous_ratings = get_user_ratings_db(user_id)
+    else:
+        previous_ratings = session.get('all_ratings', {})
     
     if learning_round == 1 or not previous_ratings:
         # Első kör: random receptek (baseline)
@@ -209,7 +528,7 @@ def get_personalized_recommendations(user_id, user_group, learning_round, previo
         liked_recipe_ids = [rid for rid, rating in previous_ratings.items() if rating >= RELEVANCE_THRESHOLD]
         
         if not liked_recipe_ids:
-            # Ha nincs kedvelt recept, magas kompozit pontszámúakat ajánljunk
+            # Magas kompozit pontszámúakat ajánljunk
             selected = recipes_df.nlargest(n, 'composite_score')
             logger.info(f"📊 Magas pontszámú ajánlások: {len(selected)} recept")
             return selected
@@ -221,20 +540,18 @@ def get_personalized_recommendations(user_id, user_group, learning_round, previo
             selected = recipes_df.sample(n=min(n, len(recipes_df)))
             return selected
         
-        # Kategória preferenciák
-        preferred_categories = liked_recipes['category'].value_counts().index.tolist()
-        
-        # ESI/HSI/PPI preferenciák
-        avg_esi_pref = liked_recipes['ESI_final'].mean()
-        avg_hsi_pref = liked_recipes['HSI'].mean()
-        avg_ppi_pref = liked_recipes['PPI'].mean()
-        
         # Még nem értékelt receptek
         unrated_recipes = recipes_df[~recipes_df['recipeid'].isin(previous_ratings.keys())].copy()
         
         if len(unrated_recipes) == 0:
             selected = recipes_df.sample(n=min(n, len(recipes_df)))
             return selected
+        
+        # Kategória és pontszám preferenciák
+        preferred_categories = liked_recipes['category'].value_counts().index.tolist()
+        avg_esi_pref = liked_recipes['ESI_final'].mean()
+        avg_hsi_pref = liked_recipes['HSI'].mean()
+        avg_ppi_pref = liked_recipes['PPI'].mean()
         
         # Csoportonkénti algoritmusok
         if user_group == 'A':
@@ -245,13 +562,13 @@ def get_personalized_recommendations(user_id, user_group, learning_round, previo
         
         elif user_group == 'B':
             # Score-enhanced: kompozit pontszámok figyelembevétele
-            unrated_recipes['score'] = (
-                unrated_recipes['composite_score'] * 0.6 +
-                (2.0 if unrated_recipes['category'].isin(preferred_categories[:2]).any() else 1.0) * 40
+            category_boost = unrated_recipes['category'].apply(
+                lambda cat: 40 if cat in preferred_categories[:2] else 20
             )
+            unrated_recipes['score'] = unrated_recipes['composite_score'] * 0.6 + category_boost
         
-        else:  # Csoport C
-            # Hybrid: ESI/HSI/PPI preferenciák + tartalom
+        else:  # Csoport C - Hybrid
+            # ESI/HSI/PPI preferenciák + tartalom
             esi_similarity = 1 - np.abs(unrated_recipes['ESI_final'] - avg_esi_pref) / 100
             hsi_similarity = 1 - np.abs(unrated_recipes['HSI'] - avg_hsi_pref) / 100
             ppi_similarity = 1 - np.abs(unrated_recipes['PPI'] - avg_ppi_pref) / 100
@@ -261,11 +578,11 @@ def get_personalized_recommendations(user_id, user_group, learning_round, previo
             )
             
             unrated_recipes['score'] = (
-                esi_similarity * 0.3 +
-                hsi_similarity * 0.3 +
-                ppi_similarity * 0.2 +
-                category_boost * 0.2
-            ) * 100
+                esi_similarity * 30 +
+                hsi_similarity * 30 +
+                ppi_similarity * 20 +
+                category_boost * 20
+            )
         
         # Top N kiválasztása
         selected = unrated_recipes.nlargest(n, 'score')
@@ -288,7 +605,10 @@ def calculate_metrics(recommendations, ratings, user_group, learning_round):
     relevant_items = [rid for rid, rating in ratings.items() if rating >= RELEVANCE_THRESHOLD]
     
     # Ajánlott elemek ID-i
-    recommended_ids = recommendations['recipeid'].tolist()[:5]  # ✅ Csak az első 5-öt nézzük
+    if hasattr(recommendations, 'to_dict'):
+        recommended_ids = recommendations['recipeid'].tolist()[:5]  # ✅ Csak az első 5-öt nézzük
+    else:
+        recommended_ids = [r.get('recipeid', '') for r in recommendations[:5]]
     
     # Metrikák számítása
     relevant_in_recommended = len([rid for rid in recommended_ids if rid in relevant_items])
@@ -308,16 +628,9 @@ def calculate_metrics(recommendations, ratings, user_group, learning_round):
         'recommended_count': len(recommended_ids)
     }
     
-    # Analytics tracking
-    analytics_data[f'group_{user_group}'].append({
-        'round': learning_round,
-        'metrics': metrics,
-        'timestamp': datetime.now().isoformat()
-    })
-    
     return metrics
 
-# FLASK ROUTE-OK
+# 🌐 FLASK ROUTE-OK
 
 @app.route('/')
 def index():
@@ -327,15 +640,21 @@ def index():
     
     # Ajánlások generálása
     recommendations = get_personalized_recommendations(
-        user_id, user_group, learning_round, session.get('ratings', {}), n=RECOMMENDATION_COUNT
+        user_id, user_group, learning_round, n=RECOMMENDATION_COUNT
     )
+    
+    # Jelenlegi kör értékelések
+    if POSTGRES_AVAILABLE:
+        current_ratings = get_user_ratings_db(user_id, learning_round)
+    else:
+        current_ratings = session.get('ratings', {})
     
     return render_template_string(MAIN_TEMPLATE, 
                                 recipes=recommendations.to_dict('records'),
                                 user_group=user_group,
                                 learning_round=learning_round,
                                 max_rounds=MAX_LEARNING_ROUNDS,
-                                rated_count=len(session.get('ratings', {})),
+                                rated_count=len(current_ratings),
                                 recommendation_count=RECOMMENDATION_COUNT)
 
 @app.route('/rate', methods=['POST'])
@@ -349,18 +668,25 @@ def rate_recipe():
         if not recipe_id or not (1 <= rating <= 5):
             return jsonify({'error': 'Érvénytelen adatok'}), 400
         
-        # Értékelés mentése
-        if 'ratings' not in session:
-            session['ratings'] = {}
+        user_id, user_group, learning_round = initialize_user_session()
         
-        session['ratings'][recipe_id] = rating
-        session.modified = True
+        # PostgreSQL mentés
+        if POSTGRES_AVAILABLE:
+            save_rating_db(user_id, recipe_id, rating, learning_round)
+            current_ratings = get_user_ratings_db(user_id, learning_round)
+        else:
+            # Session fallback
+            if 'ratings' not in session:
+                session['ratings'] = {}
+            session['ratings'][recipe_id] = rating
+            session.modified = True
+            current_ratings = session['ratings']
         
-        logger.info(f"⭐ Értékelés: {recipe_id} = {rating} csillag")
+        logger.info(f"⭐ Értékelés: {recipe_id} = {rating} csillag (Kör: {learning_round})")
         
         return jsonify({
             'success': True,
-            'rated_count': len(session['ratings']),
+            'rated_count': len(current_ratings),
             'total_needed': RECOMMENDATION_COUNT
         })
         
@@ -374,40 +700,62 @@ def next_round():
     try:
         user_id, user_group, learning_round = initialize_user_session()
         
-        # Aktuális kör metrikáinak számítása
-        current_ratings = session.get('ratings', {})
-        
-        # Előző ajánlások lekérése (egyszerűsített)
-        if learning_round <= MAX_LEARNING_ROUNDS:
-            recommendations = get_personalized_recommendations(
-                user_id, user_group, learning_round, current_ratings, n=RECOMMENDATION_COUNT
-            )
-            
-            metrics = calculate_metrics(recommendations, current_ratings, user_group, learning_round)
-            
-            # Kör előléptetése
-            session['learning_round'] = learning_round + 1
-            session['ratings'] = {}  # Új kör, új értékelések
-            session.modified = True
-            
-            # Következő kör ajánlásai
-            next_recommendations = get_personalized_recommendations(
-                user_id, user_group, session['learning_round'], current_ratings, n=RECOMMENDATION_COUNT
-            )
-            
-            return jsonify({
-                'success': True,
-                'new_round': session['learning_round'],
-                'recommendations': next_recommendations.to_dict('records'),
-                'previous_metrics': metrics,
-                'max_rounds': MAX_LEARNING_ROUNDS
-            })
+        # Aktuális kör értékeléseinek lekérése
+        if POSTGRES_AVAILABLE:
+            current_ratings = get_user_ratings_db(user_id, learning_round)
         else:
+            current_ratings = session.get('ratings', {})
+        
+        if len(current_ratings) < RECOMMENDATION_COUNT:
+            return jsonify({
+                'success': False,
+                'message': f'Kérjük, értékelje mind a {RECOMMENDATION_COUNT} receptet!'
+            }), 400
+        
+        # Metrikák számítása az aktuális körhöz
+        recommendations = get_personalized_recommendations(user_id, user_group, learning_round, n=RECOMMENDATION_COUNT)
+        metrics = calculate_metrics(recommendations, current_ratings, user_group, learning_round)
+        
+        # Metrikák mentése
+        if POSTGRES_AVAILABLE:
+            save_metrics_db(user_id, user_group, learning_round, metrics)
+        else:
+            analytics_data[f'group_{user_group}'].append({
+                'round': learning_round,
+                'metrics': metrics,
+                'timestamp': datetime.now().isoformat()
+            })
+        
+        # Következő kör ellenőrzése
+        if learning_round >= MAX_LEARNING_ROUNDS:
             return jsonify({
                 'success': False,
                 'message': 'Elérte a maximum tanulási körök számát',
                 'redirect': '/analytics'
             })
+        
+        # Következő kör inicializálása
+        next_round_num = learning_round + 1
+        session['learning_round'] = next_round_num
+        
+        # PostgreSQL-ben frissítés
+        if POSTGRES_AVAILABLE:
+            save_user_session_db(user_id, user_group, next_round_num)
+        
+        # Session ratings tisztítása az új körhöz
+        if 'ratings' in session:
+            session['ratings'] = {}
+        session.modified = True
+        
+        logger.info(f"🔄 {user_id} átlépett a {next_round_num}. körbe")
+        
+        return jsonify({
+            'success': True,
+            'new_round': next_round_num,
+            'previous_metrics': metrics,
+            'max_rounds': MAX_LEARNING_ROUNDS,
+            'message': f'Sikeresen átlépett a {next_round_num}. körbe!'
+        })
             
     except Exception as e:
         logger.error(f"❌ Következő kör hiba: {str(e)}")
@@ -418,51 +766,121 @@ def analytics():
     """Analytics dashboard"""
     ensure_initialized()
     
-    # Metrikák összesítése csoportonként
+    # Metrikák lekérése (PostgreSQL vagy memória)
+    if POSTGRES_AVAILABLE:
+        analytics_raw = get_analytics_db()
+    else:
+        analytics_raw = dict(analytics_data)
+    
+    # Csoportonkénti statisztikák számítása
     group_stats = {}
     for group in ['A', 'B', 'C']:
-        group_data = analytics_data.get(f'group_{group}', [])
+        group_data = analytics_raw.get(f'group_{group}', [])
         if group_data:
             avg_metrics = {
                 'precision_at_5': np.mean([d['metrics']['precision_at_5'] for d in group_data]),
                 'recall_at_5': np.mean([d['metrics']['recall_at_5'] for d in group_data]),
                 'f1_at_5': np.mean([d['metrics']['f1_at_5'] for d in group_data]),
-                'avg_rating': np.mean([d['metrics']['avg_rating'] for d in group_data])
+                'avg_rating': np.mean([d['metrics']['avg_rating'] for d in group_data]),
+                'data_points': len(group_data)
             }
-            group_stats[group] = avg_metrics
+        else:
+            avg_metrics = {
+                'precision_at_5': 0, 'recall_at_5': 0, 'f1_at_5': 0, 
+                'avg_rating': 0, 'data_points': 0
+            }
+        group_stats[group] = avg_metrics
     
     return render_template_string(ANALYTICS_TEMPLATE, 
                                 group_stats=group_stats,
-                                analytics_data=dict(analytics_data))
+                                analytics_data=analytics_raw,
+                                GROUP_ALGORITHMS=GROUP_ALGORITHMS)
 
 @app.route('/status')
 def status():
-    """Rendszer status JSON"""
+    """Rendszer status és health check"""
     ensure_initialized()
     
     try:
+        # Adatbázis kapcsolat tesztelése
+        db_status = "connected" if get_db_connection() else "disconnected"
+        
         status_info = {
-            'receptek_betoltve': recipes_df is not None,
-            'receptek_szama': len(recipes_df) if recipes_df is not None else 0,
-            'tfidf_inicializalva': tfidf_matrix is not None,
-            'kompozit_pontszam_tartomany': {
+            'service': 'GreenRec',
+            'version': '2.0-heroku',
+            'status': 'running',
+            'timestamp': datetime.now().isoformat(),
+            
+            # Adatok
+            'recipes_loaded': recipes_df is not None,
+            'recipes_count': len(recipes_df) if recipes_df is not None else 0,
+            'tfidf_initialized': tfidf_matrix is not None,
+            
+            # Pontszámok
+            'composite_score_range': {
                 'min': float(recipes_df['composite_score'].min()) if recipes_df is not None else 0,
                 'max': float(recipes_df['composite_score'].max()) if recipes_df is not None else 0
             },
-            'esi_final_tartomany': {
+            'esi_final_range': {
                 'min': float(recipes_df['ESI_final'].min()) if recipes_df is not None else 0,
                 'max': float(recipes_df['ESI_final'].max()) if recipes_df is not None else 0
             },
-            'aktiv_sessionok': len(user_sessions),
-            'analytics_adatok': {group: len(data) for group, data in analytics_data.items()},
-            'timestamp': datetime.now().isoformat()
+            
+            # Rendszer
+            'database_status': db_status,
+            'postgres_available': POSTGRES_AVAILABLE,
+            'active_sessions': len(user_sessions),
+            'environment': os.environ.get('FLASK_ENV', 'production'),
+            
+            # Konfiguráció
+            'recommendation_count': RECOMMENDATION_COUNT,
+            'max_learning_rounds': MAX_LEARNING_ROUNDS,
+            'relevance_threshold': RELEVANCE_THRESHOLD
         }
+        
         return jsonify(status_info)
+        
     except Exception as e:
         logger.error(f"❌ Status hiba: {str(e)}")
+        return jsonify({
+            'service': 'GreenRec',
+            'status': 'error',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+@app.route('/health')
+def health():
+    """Egyszerű health check Heroku számára"""
+    return jsonify({'status': 'healthy', 'timestamp': datetime.now().isoformat()})
+
+@app.route('/export_data')
+def export_data():
+    """Adatok exportálása (admin funkció)"""
+    try:
+        if POSTGRES_AVAILABLE:
+            analytics_raw = get_analytics_db()
+        else:
+            analytics_raw = dict(analytics_data)
+        
+        export_data = {
+            'export_timestamp': datetime.now().isoformat(),
+            'total_sessions': len(user_sessions),
+            'analytics_data': analytics_raw,
+            'system_info': {
+                'recommendation_count': RECOMMENDATION_COUNT,
+                'max_learning_rounds': MAX_LEARNING_ROUNDS,
+                'group_algorithms': GROUP_ALGORITHMS
+            }
+        }
+        
+        return jsonify(export_data)
+        
+    except Exception as e:
+        logger.error(f"❌ Export hiba: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-# HTML TEMPLATE-EK
+# 📄 HTML TEMPLATE-EK (Heroku optimalizált)
 
 MAIN_TEMPLATE = """
 <!DOCTYPE html>
@@ -471,6 +889,8 @@ MAIN_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GreenRec - Fenntartható Receptajánló</title>
+    <meta name="description" content="AI-alapú fenntartható receptajánló rendszer">
+    
     <style>
         * {
             margin: 0;
@@ -720,6 +1140,12 @@ MAIN_TEMPLATE = """
             border: 1px solid rgba(33, 150, 243, 0.3);
         }
         
+        .message.error {
+            background: rgba(244, 67, 54, 0.1);
+            color: #f44336;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+        
         @media (max-width: 768px) {
             .recipes-grid {
                 grid-template-columns: 1fr;
@@ -855,7 +1281,7 @@ MAIN_TEMPLATE = """
     </div>
 
     <script>
-        // ✅ JAVÍTOTT JAVASCRIPT: Csillag feedback és következő kör logika
+        // ✅ HEROKU-OPTIMALIZÁLT JAVASCRIPT
         
         let ratings = {};
         let ratedCount = {{ rated_count }};
@@ -924,16 +1350,26 @@ MAIN_TEMPLATE = """
             }
             ratings[recipeId] = rating;
             
-            // AJAX kérés a szerverre
+            // AJAX kérés a szerverre (Heroku-kompatibilis)
             fetch('/rate', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'},
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
                 body: JSON.stringify({recipe_id: recipeId, rating: rating})
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
                 if (data.success) {
                     updateProgress(data.rated_count, data.total_needed);
+                } else {
+                    showMessage('Hiba történt az értékelés mentése során', 'error');
                 }
             })
             .catch(error => {
@@ -969,16 +1405,30 @@ MAIN_TEMPLATE = """
             
             fetch('/next_round', {
                 method: 'POST',
-                headers: {'Content-Type': 'application/json'}
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                }
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
             .then(data => {
-                if (data.success && data.recommendations) {
+                if (data.success) {
                     // Oldal újratöltése az új ajánlásokkal
-                    location.reload();
+                    showMessage(data.message || 'Következő kör indítása...', 'success');
+                    setTimeout(() => {
+                        location.reload();
+                    }, 1500);
                 } else if (data.redirect) {
                     // Utolsó kör után analytics oldalra
-                    window.location.href = data.redirect;
+                    showMessage('Tanulmány befejezve! Átirányítás az eredményekhez...', 'success');
+                    setTimeout(() => {
+                        window.location.href = data.redirect;
+                    }, 2000);
                 } else {
                     showMessage(data.message || 'Hiba történt', 'error');
                 }
@@ -1001,6 +1451,13 @@ MAIN_TEMPLATE = """
         
         // Kezdeti állapot beállítása
         updateProgress(ratedCount, totalCount);
+        
+        // Heroku sleep mode kezelése
+        setInterval(() => {
+            fetch('/health')
+                .then(response => response.json())
+                .catch(error => console.log('Health check failed:', error));
+        }, 300000); // 5 percenként
     </script>
 </body>
 </html>
@@ -1181,6 +1638,7 @@ ANALYTICS_TEMPLATE = """
                     <div>Precision@5: {{ "%.3f"|format(stats.precision_at_5) }}</div>
                     <div>Recall@5: {{ "%.3f"|format(stats.recall_at_5) }}</div>
                     <div>Átlag Értékelés: {{ "%.2f"|format(stats.avg_rating) }}</div>
+                    <div>Adatpontok: {{ stats.data_points }}</div>
                 </div>
             </div>
             {% endfor %}
@@ -1246,7 +1704,7 @@ ANALYTICS_TEMPLATE = """
         <div class="controls">
             <a href="/" class="btn">🏠 Főoldalra</a>
             <button onclick="downloadData()" class="btn">📊 Adatok Letöltése</button>
-            <button onclick="window.print()" class="btn">🖨️ Nyomtatás</button>
+            <a href="/export_data" class="btn" target="_blank">📤 JSON Export</a>
         </div>
     </div>
 
@@ -1325,16 +1783,14 @@ ANALYTICS_TEMPLATE = """
             }
         });
         
-        // Learning Curves Chart (if we have round-by-round data)
+        // Learning Curves Chart
         const learningCtx = document.getElementById('learningCurveChart').getContext('2d');
         
-        // Process learning curve data
         const learningCurveData = {
             labels: ['1. Kör', '2. Kör', '3. Kör', '4. Kör', '5. Kör'],
             datasets: []
         };
         
-        // Generate sample learning curves for demo
         const colors = {
             A: 'rgba(231, 76, 60, 1)',
             B: 'rgba(243, 156, 18, 1)', 
@@ -1342,8 +1798,8 @@ ANALYTICS_TEMPLATE = """
         };
         
         ['A', 'B', 'C'].forEach(group => {
-            if (groupStats[group]) {
-                // Simulate learning progression
+            if (groupStats[group] && groupStats[group].data_points > 0) {
+                // Simulate learning progression based on final performance
                 const finalF1 = groupStats[group].f1_at_5;
                 const progression = [
                     Math.max(0.1, finalF1 * 0.4),  // Round 1: 40% of final
@@ -1405,7 +1861,11 @@ ANALYTICS_TEMPLATE = """
             const data = {
                 group_statistics: groupStats,
                 analytics_data: analyticsData,
-                export_time: new Date().toISOString()
+                export_time: new Date().toISOString(),
+                system_info: {
+                    recommendation_count: {{ RECOMMENDATION_COUNT }},
+                    max_learning_rounds: {{ MAX_LEARNING_ROUNDS }}
+                }
             };
             
             const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -1426,12 +1886,64 @@ ANALYTICS_TEMPLATE = """
 </html>
 """
 
+# 🚀 HEROKU KONFIGURÁCIÓS FÁJLOK
+
+# requirements.txt content
+REQUIREMENTS_CONTENT = """Flask==2.3.3
+Werkzeug==2.3.7
+pandas==2.0.3
+numpy==1.24.3
+scikit-learn==1.3.0
+scipy==1.11.2
+psycopg2-binary==2.9.7
+gunicorn==21.2.0
+python-dotenv==1.0.0
+"""
+
+# Procfile content
+PROCFILE_CONTENT = """web: gunicorn app:app --timeout 120 --workers 3"""
+
+# runtime.txt content  
+RUNTIME_CONTENT = """python-3.11.5"""
+
+# .env example content
+ENV_EXAMPLE_CONTENT = """# GreenRec Environment Variables
+SECRET_KEY=your-secret-key-here
+FLASK_ENV=production
+
+# PostgreSQL Database (automatikusan beállítva Heroku-n)
+# DATABASE_URL=postgresql://username:password@host:port/database
+
+# Optional: JSON recept adatok környezeti változóban
+# RECIPE_DATA_JSON='[{"recipeid": "1", "name": "Demo Recipe", ...}]'
+"""
+
 if __name__ == '__main__':
-    print("🌱 GreenRec rendszer indítása...")
+    print("🌱 GreenRec - Heroku Production Server")
+    print("=" * 50)
     print("✅ 5 recept ajánlás (Precision@5 konzisztencia)")
+    print("✅ PostgreSQL adatbázis integráció")
     print("✅ Dinamikus tanulási flow")
     print("✅ Inverz ESI normalizálás")
-    print("✅ Javított UI és A/B/C teszt")
-    print("🚀 Szerver: http://localhost:5000")
+    print("✅ A/B/C teszt és analytics")
+    print("✅ Production-ready konfiguráció")
+    print("=" * 50)
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Heroku port konfiguráció
+    print(f"🚀 Szerver port: {PORT}")
+    print(f"🔧 Debug mód: {DEBUG_MODE}")
+    print(f"🗄️ PostgreSQL: {'✅ Elérhető' if POSTGRES_AVAILABLE else '❌ Nem elérhető'}")
+    
+    if DATABASE_URL:
+        print(f"🔗 Adatbázis: Csatlakozva")
+    else:
+        print(f"⚠️ Adatbázis: Memória-alapú (fejlesztési mód)")
+    
+    print("=" * 50)
+    
+    # Flask alkalmazás indítása
+    app.run(
+        debug=DEBUG_MODE,
+        host='0.0.0.0',
+        port=PORT
+    )
