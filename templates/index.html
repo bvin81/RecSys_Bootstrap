@@ -41,30 +41,27 @@
             line-height: 1.3;
         }
         .score-badge {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            border-radius: 20px;
-            padding: 8px 12px;
-            font-size: 0.85rem;
+            border-radius: 15px;
+            padding: 4px 8px;
+            font-size: 0.75rem;
             font-weight: bold;
             backdrop-filter: blur(10px);
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
         .hsi-badge { 
             background: rgba(40, 167, 69, 0.9); 
             color: white; 
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
         .esi-badge { 
             background: rgba(23, 162, 184, 0.9); 
             color: white; 
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
         .ppi-badge { 
             background: rgba(255, 193, 7, 0.9); 
             color: black; 
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
         .btn-recommend {
             background: linear-gradient(135deg, #28a745, #20c997);
@@ -138,7 +135,7 @@
                     <h4 class="alert-heading">
                         🍽️ Üdvözöllek, {{ username }}!
                     </h4>
-                    <p>Kiválasztott recept alapján 5 hasonló, fenntartható receptet ajánlunk neked.</p>
+                    <p>Fenntartható és egészséges recepteket ajánlunk neked. Kattints az alábbi gombra és választhatsz 5 recept közül!</p>
                     
                     {% if user_group == 'C' %}
                         <div class="explanation">
@@ -235,22 +232,27 @@
                                 <img src="${recipe.images}" class="recipe-image" alt="${recipe.title}" 
                                      onerror="this.src='https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=300&h=200&fit=crop'">
                                 
-                                <!-- Pontszámok megjelenítése csoporttól függően -->
-                                ${userGroup !== 'A' ? `
-                                    <div class="score-badge hsi-badge" style="top: 10px; right: 10px;" title="Egészségességi mutató">
-                                        ❤️ ${recipe.hsi}
-                                    </div>
-                                    <div class="score-badge esi-badge" style="top: 55px; right: 10px;" title="Környezeti hatás">
-                                        🌍 ${recipe.esi}
-                                    </div>
-                                    <div class="score-badge ppi-badge" style="top: 100px; right: 10px;" title="Népszerűségi mutató">
-                                        ⭐ ${recipe.ppi}
-                                    </div>
-                                ` : ''}
-                                
                                 <div class="card-body">
                                     <h5 class="card-title">${recipe.title}</h5>
-                                    <span class="category-badge">${recipe.category}</span>
+                                    
+                                    <div class="d-flex align-items-center justify-content-between mb-3">
+                                        <span class="category-badge">${recipe.category}</span>
+                                        
+                                        <!-- Pontszámok a kategória mellett -->
+                                        ${userGroup !== 'A' ? `
+                                            <div class="d-flex gap-2">
+                                                <span class="score-badge hsi-badge" title="Egészségességi mutató" style="position: relative; top: 0; right: 0;">
+                                                    ❤️ ${recipe.hsi}
+                                                </span>
+                                                <span class="score-badge esi-badge" title="Környezeti hatás" style="position: relative; top: 0; right: 0;">
+                                                    🌍 ${recipe.esi}
+                                                </span>
+                                                <span class="score-badge ppi-badge" title="Népszerűségi mutató" style="position: relative; top: 0; right: 0;">
+                                                    ⭐ ${recipe.ppi}
+                                                </span>
+                                            </div>
+                                        ` : ''}
+                                    </div>
                                     
                                     <p class="card-text mt-2">
                                         <strong>Összetevők:</strong> ${recipe.ingredients}
