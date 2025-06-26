@@ -1679,6 +1679,82 @@ body {
 .btn-info {
     background: linear-gradient(45deg, var(--info-color), #1976d2);
 }
+
+/* ----- ✅ ÚJ: CSILLAG ÉRTÉKELÉS STÍLUSOK ----- */
+
+/* Értékelés gomb stílusok */
+.submit-rating-btn {
+    padding: 10px 16px;
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: var(--font-size-sm);
+    font-weight: 500;
+    margin-top: var(--spacing-md);
+    width: 100%;
+    transition: var(--transition-normal);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.submit-rating-btn.disabled {
+    background-color: var(--gray);
+    color: var(--dark-gray);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.submit-rating-btn.enabled {
+    background: var(--success-gradient);
+    color: var(--white);
+    cursor: pointer;
+    opacity: 1;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.submit-rating-btn.enabled:hover {
+    background: var(--primary-dark);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-lg);
+}
+
+/* Csillag rating container javítása */
+.rating-container {
+    text-align: center;
+    padding: var(--spacing-md) 0;
+    border-top: 1px solid var(--light-gray);
+    margin-top: var(--spacing-md);
+}
+
+/* Csillag stílusok javítása */
+.star-rating {
+    margin-bottom: var(--spacing-sm);
+}
+
+.star-rating .star {
+    cursor: pointer;
+    color: var(--gray);
+    font-size: 28px;
+    margin: 0 2px;
+    transition: var(--transition-fast);
+    display: inline-block;
+    user-select: none;
+}
+
+.star-rating .star:hover,
+.star-rating .star.active {
+    color: #ffc107;
+    text-shadow: 0 0 10px rgba(255, 193, 7, 0.6);
+    transform: scale(1.15);
+}
+
+/* Kiválasztott kártya stílus javítása */
+.recipe-card.selected {
+    border-color: var(--success-color) !important;
+    box-shadow: 0 0 20px rgba(76, 175, 80, 0.4) !important;
+    transform: translateY(-3px) !important;
+}
+
 /* ----- ANALYTICS RESPONSIVE DESIGN ----- */
 @media (max-width: 768px) {
     .key-stats {
