@@ -45,64 +45,135 @@ def get_db_connection():
         raise
 
 def create_tables():
-    """Adatbázis táblák létrehozása"""
+    """Adatbázis táblák létrehozása hibakezeléssel"""
     logger.info("🔧 Adatbázis táblák létrehozása...")
     conn = get_db_connection()
     cur = conn.cursor()
     
-    # Users tábla
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
-            username VARCHAR(80) UNIQUE NOT NULL,
-            password_hash VARCHAR(255) NOT NULL,
-            group_name CHAR(1) NOT NULL CHECK (group_name IN ('A','B','C')),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
+    try:
+        # 1. Először töröljük a függő táblákat ha léteznek
+        cur.execute("DROP TABLE IF EXISTS user_interactions CASCADE;")
+        cur.execute("DROP TABLE IF EXISTS user_choices CASCADE;")
+        cur.execute("DROP TABLE IF EXISTS users CASCADE;")
+        cur.execute("DROP TABLE IF EXISTS recipes CASCADE;")
+        logger.info("🗑️  Régi táblák törölve")
+        
+        # 2. Users tábla létrehozása
+        cur.execute("""
+            CREATE TABLE users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(80) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                group_name CHAR(1) NOT NULL CHECK (group_name IN ('A','B','C')),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        logger.info("✅ Users tábla létrehozva")
+        
+        # 3. Recipes tábla létrehozása
+        cur.execute("""
+            CREATE TABLE recipes (
+                id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                hsi FLOAT NOT NULL,
+                esi FLOAT NOT NULL,
+                ppi FLOAT NOT NULL,
+                category VARCHAR(100),
+                ingredients TEXT,
+                instructions TEXT,
+                images TEXT
+            );
+        """)
+        logger.info("✅ Recipes tábla létrehozva")
+        
+        # 4. User choices tábla létrehozása (foreign key-ekkel)
+        cur.execute("""
+            CREATE TABLE user_choices (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
+                selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        logger.info("✅ User_choices tábla létrehozva")
+        
+        # 5. User interactions tábla létrehozása (opcionális)
+        cur.execute("""
+            CREATE TABLE user_interactions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
+                action_type VARCHAR(50) NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        logger.info("✅ User_interactions tábla létrehozva")
+        
+    except Exception as e:
+        logger.error(f"❌ Tábla létrehozási hiba: {e}")
+        # Ha hiba van, próbáljuk egyszerűbb módon
+        logger.info("🔄 Egyszerűbb táblák létrehozása foreign key-ek nélkül...")
+        
+        # Fallback: táblák foreign key-ek nélkül
+        cur.execute("DROP TABLE IF EXISTS user_interactions CASCADE;")
+        cur.execute("DROP TABLE IF EXISTS user_choices CASCADE;")
+        cur.execute("DROP TABLE IF EXISTS users CASCADE;")
+        cur.execute("DROP TABLE IF EXISTS recipes CASCADE;")
+        
+        cur.execute("""
+            CREATE TABLE users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(80) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                group_name CHAR(1) NOT NULL CHECK (group_name IN ('A','B','C')),
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        cur.execute("""
+            CREATE TABLE recipes (
+                id INTEGER PRIMARY KEY,
+                title TEXT NOT NULL,
+                hsi FLOAT NOT NULL,
+                esi FLOAT NOT NULL,
+                ppi FLOAT NOT NULL,
+                category VARCHAR(100),
+                ingredients TEXT,
+                instructions TEXT,
+                images TEXT
+            );
+        """)
+        
+        cur.execute("""
+            CREATE TABLE user_choices (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                recipe_id INTEGER,
+                selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        
+        cur.execute("""
+            CREATE TABLE user_interactions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                recipe_id INTEGER,
+                action_type VARCHAR(50) NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        logger.info("✅ Egyszerű táblák létrehozva foreign key-ek nélkül")
     
-    # Recipes tábla
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS recipes (
-            id INTEGER PRIMARY KEY,
-            title TEXT NOT NULL,
-            hsi FLOAT NOT NULL,
-            esi FLOAT NOT NULL,
-            ppi FLOAT NOT NULL,
-            category VARCHAR(100),
-            ingredients TEXT,
-            instructions TEXT,
-            images TEXT
-        );
-    """)
-    
-    # User choices tábla
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_choices (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
-            selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    
-    # User interactions tábla (opcionális)
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS user_interactions (
-            id SERIAL PRIMARY KEY,
-            user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-            recipe_id INTEGER REFERENCES recipes(id) ON DELETE CASCADE,
-            action_type VARCHAR(50) NOT NULL,
-            timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-    """)
-    
-    # Indexek létrehozása a teljesítményért
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_users_group ON users(group_name);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_user_choices_user_id ON user_choices(user_id);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_user_choices_recipe_id ON user_choices(recipe_id);")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_recipes_category ON recipes(category);")
+    # 6. Indexek létrehozása a teljesítményért
+    try:
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_group ON users(group_name);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_choices_user_id ON user_choices(user_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_choices_recipe_id ON user_choices(recipe_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_recipes_category ON recipes(category);")
+        logger.info("✅ Indexek létrehozva")
+    except Exception as e:
+        logger.warning(f"⚠️  Index létrehozási figyelmeztetés: {e}")
     
     conn.commit()
     cur.close()
