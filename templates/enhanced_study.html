@@ -1,0 +1,961 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GreenRec - Környezettudatos Recept Ajánlás</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        :root {
+            --green-primary: #2d5a27;
+            --green-secondary: #4caf50;
+            --green-light: #81c784;
+            --eco-blue: #26a69a;
+            --health-orange: #ff9800;
+            --price-purple: #9c27b0;
+        }
+
+        body {
+            background: linear-gradient(135deg, #e8f5e8 0%, #f1f8e9 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, var(--green-primary) 0%, var(--green-secondary) 100%);
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .study-info {
+            background: white;
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            border-left: 5px solid var(--green-secondary);
+        }
+
+        .progress-container {
+            margin-bottom: 2rem;
+        }
+
+        .round-indicator {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+
+        .round-step {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            position: relative;
+        }
+
+        .round-step.completed {
+            background-color: var(--green-secondary);
+        }
+
+        .round-step.current {
+            background-color: var(--green-primary);
+            animation: pulse 2s infinite;
+        }
+
+        .round-step.upcoming {
+            background-color: #ccc;
+            color: #666;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+
+        .search-container {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .recipe-card {
+            background: white;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            border: 2px solid transparent;
+        }
+
+        .recipe-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .recipe-card.rated {
+            border-color: var(--green-secondary);
+        }
+
+        .recipe-image {
+            height: 200px;
+            background: linear-gradient(45deg, #e8f5e8, #c8e6c9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .recipe-image::before {
+            content: '🍽️';
+            font-size: 4rem;
+            opacity: 0.3;
+        }
+
+        .recipe-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .recipe-content {
+            padding: 1.5rem;
+        }
+
+        .recipe-title {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: var(--green-primary);
+            margin-bottom: 1rem;
+        }
+
+        .recipe-ingredients {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+            line-height: 1.5;
+        }
+
+        .sustainability-scores {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .score-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: white;
+            min-width: 80px;
+            justify-content: center;
+        }
+
+        .hsi-badge {
+            background: linear-gradient(135deg, var(--health-orange), #ff6f00);
+        }
+
+        .esi-badge {
+            background: linear-gradient(135deg, var(--eco-blue), #00695c);
+        }
+
+        .ppi-badge {
+            background: linear-gradient(135deg, var(--price-purple), #6a1b9a);
+        }
+
+        .hidden-scores {
+            background: #f5f5f5;
+            border: 2px dashed #ccc;
+            color: #999;
+            text-align: center;
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 1.5rem;
+        }
+
+        .rating-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .rating-stars {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+
+        .star {
+            font-size: 2rem;
+            color: #ddd;
+            cursor: pointer;
+            transition: color 0.2s ease, transform 0.1s ease;
+        }
+
+        .star:hover,
+        .star.active {
+            color: #ffc107;
+            transform: scale(1.1);
+        }
+
+        .btn-rate {
+            background: linear-gradient(135deg, var(--green-secondary), var(--green-primary));
+            border: none;
+            color: white;
+            padding: 0.75rem 2rem;
+            border-radius: 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            width: 100%;
+        }
+
+        .btn-rate:hover {
+            background: linear-gradient(135deg, var(--green-primary), var(--green-secondary));
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        .btn-rate:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .next-round-container {
+            text-align: center;
+            margin-top: 3rem;
+            padding: 2rem;
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .btn-next-round {
+            background: linear-gradient(135deg, var(--green-primary), var(--green-secondary));
+            border: none;
+            color: white;
+            padding: 1rem 3rem;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+
+        .btn-next-round:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(45, 90, 39, 0.3);
+        }
+
+        .completion-message {
+            background: linear-gradient(135deg, var(--green-light), var(--green-secondary));
+            color: white;
+            padding: 2rem;
+            border-radius: 15px;
+            text-align: center;
+            margin-top: 2rem;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid var(--green-secondary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .alert-custom {
+            border-radius: 10px;
+            border: none;
+            padding: 1rem 1.5rem;
+        }
+
+        .group-indicator {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: 15px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .sustainability-scores {
+                flex-direction: column;
+                gap: 0.5rem;
+            }
+            
+            .score-badge {
+                min-width: auto;
+                width: 100%;
+            }
+            
+            .rating-stars .star {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <div class="header">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="mb-0">
+                        <i class="fas fa-leaf me-2"></i>
+                        GreenRec - Környezettudatos Recept Ajánlás
+                    </h1>
+                    <p class="mb-0 mt-2 opacity-75">Intelligens ajánlórendszer fenntartható étkezéshez</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <div class="group-indicator">
+                        {{ user_group }} Csoport
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Tanulmány Információk -->
+        <div class="study-info">
+            <div class="row">
+                <div class="col-md-8">
+                    <h4><i class="fas fa-info-circle text-primary me-2"></i>Tanulmány Információk</h4>
+                    <p class="mb-2"><strong>Felhasználó ID:</strong> {{ user_id }}</p>
+                    <p class="mb-2"><strong>Csoport:</strong> {{ user_group }}</p>
+                    <p class="mb-0"><strong>Aktuális kör:</strong> {{ learning_round }} / {{ total_rounds }}</p>
+                </div>
+                <div class="col-md-4 text-center">
+                    <div class="progress-container">
+                        <h5>Haladás</h5>
+                        <div class="progress mb-2">
+                            <div class="progress-bar bg-success" 
+                                 style="width: {{ (learning_round / total_rounds * 100) }}%">
+                                {{ learning_round }} / {{ total_rounds }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Kör Indikátorok -->
+        <div class="round-indicator">
+            {% for round_num in range(1, total_rounds + 1) %}
+                <div class="round-step {% if round_num < learning_round %}completed{% elif round_num == learning_round %}current{% else %}upcoming{% endif %}">
+                    {% if round_num < learning_round %}
+                        <i class="fas fa-check"></i>
+                    {% else %}
+                        {{ round_num }}
+                    {% endif %}
+                </div>
+                {% if not loop.last %}
+                    <div class="flex-fill" style="height: 2px; background: {% if round_num < learning_round %}var(--green-secondary){% else %}#ccc{% endif %}; margin: 0 1rem;"></div>
+                {% endif %}
+            {% endfor %}
+        </div>
+
+        <!-- Keresési Funkció -->
+        {% if show_search %}
+        <div class="search-container">
+            <h5><i class="fas fa-search me-2"></i>Recept Keresés</h5>
+            <p class="text-muted mb-3">Kereshet recepteket összetevők alapján (pl. "csirke, rizs, paradicsom")</p>
+            <form action="{{ url_for('recipes.search_recipes') }}" method="GET" class="d-flex gap-2">
+                <input type="text" name="q" class="form-control" placeholder="Adja meg a keresett összetevőket..." required>
+                <button type="submit" class="btn btn-outline-success">
+                    <i class="fas fa-search"></i> Keresés
+                </button>
+            </form>
+            <div class="mt-2">
+                <small class="text-muted">Vagy folytassa az ajánlások értékelésével alább</small>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Ajánlott Receptek -->
+        <div class="row">
+            <div class="col-12">
+                <h3 class="mb-4">
+                    <i class="fas fa-utensils me-2"></i>
+                    Ajánlott Receptek - {{ learning_round }}. kör
+                </h3>
+            </div>
+        </div>
+
+        <div class="row" id="recommendations-container">
+            {% for recipe in recommendations %}
+            <div class="col-lg-6 col-xl-4">
+                <div class="recipe-card" data-recipe-id="{{ recipe.id }}">
+                    <!-- Recept Kép -->
+                    <div class="recipe-image">
+                        {% if recipe.images %}
+                            <img src="{{ recipe.images }}" alt="{{ recipe.name }}" loading="lazy">
+                        {% else %}
+                            <div class="d-flex align-items-center justify-content-center h-100">
+                                <div class="text-center">
+                                    <i class="fas fa-utensils fa-3x text-muted mb-2"></i>
+                                    <div class="text-muted">{{ recipe.name }}</div>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <!-- Recept Tartalom -->
+                    <div class="recipe-content">
+                        <h5 class="recipe-title">{{ recipe.name }}</h5>
+                        
+                        <div class="recipe-ingredients">
+                            <i class="fas fa-list-ul me-1"></i>
+                            <strong>Összetevők:</strong> {{ recipe.ingredients | truncate(100) }}
+                        </div>
+
+                        <!-- Fenntarthatósági Pontszámok -->
+                        {% if show_scores %}
+                            <div class="sustainability-scores">
+                                <div class="score-badge hsi-badge" title="Egészség Index">
+                                    <i class="fas fa-heart"></i>
+                                    <span>{{ recipe.HSI }}</span>
+                                </div>
+                                <div class="score-badge esi-badge" title="Környezeti Fenntarthatóság">
+                                    <i class="fas fa-leaf"></i>
+                                    <span>{{ recipe.ESI }}</span>
+                                </div>
+                                <div class="score-badge ppi-badge" title="Ár-érték Arány">
+                                    <i class="fas fa-euro-sign"></i>
+                                    <span>{{ recipe.PPI }}</span>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="hidden-scores">
+                                <i class="fas fa-eye-slash me-2"></i>
+                                <em>A fenntarthatósági pontszámok rejtve vannak ebben a tesztcsoportban</em>
+                            </div>
+                        {% endif %}
+
+                        <!-- Értékelési Szekció -->
+                        <div class="rating-section">
+                            <h6 class="text-center mb-3">Mennyire tetszik ez a recept?</h6>
+                            
+                            <div class="rating-stars" data-recipe-id="{{ recipe.id }}">
+                                {% for star in range(1, 6) %}
+                                    <span class="star" data-rating="{{ star }}">
+                                        <i class="fas fa-star"></i>
+                                    </span>
+                                {% endfor %}
+                            </div>
+                            
+                            <button class="btn btn-rate" 
+                                    data-recipe-id="{{ recipe.id }}"
+                                    data-recipe-name="{{ recipe.name }}"
+                                    disabled>
+                                <i class="fas fa-thumbs-up me-2"></i>
+                                Értékelés Mentése
+                            </button>
+                            
+                            <div class="rating-feedback mt-2 text-center" style="display: none;">
+                                <small class="text-success">
+                                    <i class="fas fa-check-circle me-1"></i>
+                                    Értékelés elmentve!
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Következő Kör / Befejezés -->
+        <div class="next-round-container" id="next-round-section" style="display: none;">
+            {% if is_final_round %}
+                <div class="completion-message">
+                    <h4><i class="fas fa-trophy me-2"></i>Gratulálunk!</h4>
+                    <p class="mb-3">Sikeresen befejezte a tanulmányt!</p>
+                    <a href="{{ url_for('recipes.study_complete') }}" class="btn btn-light btn-lg">
+                        <i class="fas fa-chart-bar me-2"></i>
+                        Eredmények Megtekintése
+                    </a>
+                </div>
+            {% else %}
+                <h4><i class="fas fa-arrow-right me-2"></i>{{ learning_round }}. kör befejezve</h4>
+                <p class="mb-3">Folytassa a következő körrel további receptek értékeléséhez</p>
+                <button class="btn btn-next-round" id="next-round-btn">
+                    <i class="fas fa-forward me-2"></i>
+                    Következő Kör ({{ learning_round + 1 }}/{{ total_rounds }})
+                </button>
+            {% endif %}
+        </div>
+
+        <!-- Eredmények Összefoglaló -->
+        <div class="row mt-4" id="current-session-stats" style="display: none;">
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title text-success">Értékelt Receptek</h5>
+                        <h2 class="text-success" id="rated-count">0</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title text-info">Átlag Értékelés</h5>
+                        <h2 class="text-info" id="avg-rating">-</h2>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card text-center">
+                    <div class="card-body">
+                        <h5 class="card-title text-warning">Haladás</h5>
+                        <h2 class="text-warning" id="progress-percent">{{ (learning_round / total_rounds * 100) | round(1) }}%</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container position-fixed bottom-0 end-0 p-3">
+        <div id="rating-toast" class="toast" role="alert">
+            <div class="toast-header">
+                <i class="fas fa-check-circle text-success me-2"></i>
+                <strong class="me-auto">Értékelés</strong>
+                <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+            </div>
+            <div class="toast-body">
+                Értékelés sikeresen elmentve!
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Global változók
+        let ratedRecipes = new Set();
+        let userRatings = {};
+        const totalRecipes = {{ recommendations | length }};
+        
+        // Toast inicializálása
+        const ratingToast = new bootstrap.Toast(document.getElementById('rating-toast'));
+
+        // DOM ready
+        document.addEventListener('DOMContentLoaded', function() {
+            initializeRatingSystem();
+            updateProgressStats();
+            
+            // Next round button handler
+            const nextRoundBtn = document.getElementById('next-round-btn');
+            if (nextRoundBtn) {
+                nextRoundBtn.addEventListener('click', handleNextRound);
+            }
+        });
+
+        function initializeRatingSystem() {
+            // Star rating eventhandlers
+            document.querySelectorAll('.rating-stars').forEach(function(starsContainer) {
+                const recipeId = starsContainer.dataset.recipeId;
+                const stars = starsContainer.querySelectorAll('.star');
+                const rateBtn = document.querySelector(`button[data-recipe-id="${recipeId}"]`);
+                
+                let selectedRating = 0;
+                
+                stars.forEach(function(star, index) {
+                    const rating = index + 1;
+                    
+                    // Hover effect
+                    star.addEventListener('mouseenter', function() {
+                        highlightStars(stars, rating);
+                    });
+                    
+                    // Click handler
+                    star.addEventListener('click', function() {
+                        selectedRating = rating;
+                        setStarRating(stars, rating);
+                        rateBtn.disabled = false;
+                        rateBtn.innerHTML = `<i class="fas fa-thumbs-up me-2"></i>Értékelés Mentése (${rating} csillag)`;
+                    });
+                });
+                
+                // Mouse leave - reset to selected or 0
+                starsContainer.addEventListener('mouseleave', function() {
+                    setStarRating(stars, selectedRating);
+                });
+                
+                // Rate button click
+                rateBtn.addEventListener('click', function() {
+                    if (selectedRating > 0) {
+                        submitRating(recipeId, selectedRating, rateBtn);
+                    }
+                });
+            });
+        }
+
+        function highlightStars(stars, rating) {
+            stars.forEach(function(star, index) {
+                if (index < rating) {
+                    star.classList.add('active');
+                } else {
+                    star.classList.remove('active');
+                }
+            });
+        }
+
+        function setStarRating(stars, rating) {
+            stars.forEach(function(star, index) {
+                if (index < rating) {
+                    star.classList.add('active');
+                } else {
+                    star.classList.remove('active');
+                }
+            });
+        }
+
+        function submitRating(recipeId, rating, buttonElement) {
+            // UI feedback
+            buttonElement.disabled = true;
+            buttonElement.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>Mentés...`;
+            
+            // AJAX request
+            fetch('/recipes/rate_recipe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    recipe_id: recipeId,
+                    rating: rating
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Sikeres mentés
+                    ratedRecipes.add(recipeId);
+                    userRatings[recipeId] = rating;
+                    
+                    // UI frissítése
+                    buttonElement.innerHTML = `<i class="fas fa-check me-2"></i>Elmentve (${rating} csillag)`;
+                    buttonElement.classList.add('btn-success');
+                    
+                    // Recept kártya megjelölése
+                    const recipeCard = document.querySelector(`[data-recipe-id="${recipeId}"]`);
+                    recipeCard.classList.add('rated');
+                    
+                    // Feedback megjelenítése
+                    const feedback = recipeCard.querySelector('.rating-feedback');
+                    feedback.style.display = 'block';
+                    
+                    // Toast notification
+                    ratingToast.show();
+                    
+                    // Statisztikák frissítése
+                    updateProgressStats();
+                    
+                    // Ellenőrzés: minden recept értékelve?
+                    checkAllRated();
+                    
+                } else {
+                    // Hiba kezelése
+                    buttonElement.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>Hiba történt`;
+                    buttonElement.classList.add('btn-danger');
+                    setTimeout(() => {
+                        buttonElement.disabled = false;
+                        buttonElement.innerHTML = `<i class="fas fa-thumbs-up me-2"></i>Értékelés Mentése (${rating} csillag)`;
+                        buttonElement.classList.remove('btn-danger');
+                    }, 3000);
+                }
+            })
+            .catch(error => {
+                console.error('Rating error:', error);
+                buttonElement.innerHTML = `<i class="fas fa-wifi me-2"></i>Kapcsolat hiba`;
+                buttonElement.classList.add('btn-warning');
+            });
+        }
+
+        function updateProgressStats() {
+            const ratedCount = ratedRecipes.size;
+            const avgRating = ratedCount > 0 ? 
+                Object.values(userRatings).reduce((a, b) => a + b, 0) / ratedCount : 0;
+            
+            document.getElementById('rated-count').textContent = ratedCount;
+            document.getElementById('avg-rating').textContent = ratedCount > 0 ? 
+                avgRating.toFixed(1) : '-';
+            
+            // Stats megjelenítése ha van értékelés
+            if (ratedCount > 0) {
+                document.getElementById('current-session-stats').style.display = 'block';
+            }
+        }
+
+        function checkAllRated() {
+            if (ratedRecipes.size >= totalRecipes) {
+                // Minden recept értékelve - következő kör gomb megjelenítése
+                document.getElementById('next-round-section').style.display = 'block';
+                
+                // Smooth scroll to next round section
+                document.getElementById('next-round-section').scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+        }
+
+        function handleNextRound() {
+            const nextRoundBtn = document.getElementById('next-round-btn');
+            nextRoundBtn.disabled = true;
+            nextRoundBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>Betöltés...`;
+            
+            fetch('/recipes/next_round', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.finished) {
+                        // Tanulmány befejezve
+                        window.location.href = data.redirect;
+                    } else {
+                        // Következő kör
+                        window.location.href = data.redirect;
+                    }
+                } else {
+                    // Hiba kezelése
+                    nextRoundBtn.innerHTML = `<i class="fas fa-exclamation-triangle me-2"></i>Hiba történt`;
+                    nextRoundBtn.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Next round error:', error);
+                nextRoundBtn.innerHTML = `<i class="fas fa-wifi me-2"></i>Kapcsolat hiba`;
+                nextRoundBtn.disabled = false;
+            });
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            // Számok 1-5: gyors értékelés az első nem-értékelt recepthez
+            if (e.key >= '1' && e.key <= '5' && !e.ctrlKey && !e.altKey) {
+                const rating = parseInt(e.key);
+                const unratedCards = document.querySelectorAll('.recipe-card:not(.rated)');
+                
+                if (unratedCards.length > 0) {
+                    const firstUnrated = unratedCards[0];
+                    const recipeId = firstUnrated.dataset.recipeId;
+                    const stars = firstUnrated.querySelectorAll('.star');
+                    const rateBtn = firstUnrated.querySelector('.btn-rate');
+                    
+                    // Set rating
+                    setStarRating(stars, rating);
+                    rateBtn.disabled = false;
+                    rateBtn.innerHTML = `<i class="fas fa-thumbs-up me-2"></i>Értékelés Mentése (${rating} csillag)`;
+                    
+                    // Submit rating
+                    submitRating(recipeId, rating, rateBtn);
+                    
+                    e.preventDefault();
+                }
+            }
+        });
+
+        // Page visibility change handling
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                // User switched away - save current state
+                console.log('Page hidden - saving state');
+            } else {
+                // User returned
+                console.log('Page visible - user returned');
+            }
+        });
+
+        // Prevent accidental page refresh when there are unsaved ratings
+        window.addEventListener('beforeunload', function(e) {
+            if (ratedRecipes.size > 0 && ratedRecipes.size < totalRecipes) {
+                const message = 'Vannak el nem mentett értékelések. Biztosan el szeretne távozni?';
+                e.returnValue = message;
+                return message;
+            }
+        });
+
+        // Accessibility enhancements
+        document.addEventListener('DOMContentLoaded', function() {
+            // Add ARIA labels
+            document.querySelectorAll('.star').forEach((star, index) => {
+                star.setAttribute('aria-label', `${index + 1} csillag értékelés`);
+                star.setAttribute('role', 'button');
+                star.setAttribute('tabindex', '0');
+            });
+            
+            // Keyboard navigation for stars
+            document.querySelectorAll('.rating-stars').forEach(container => {
+                container.addEventListener('keydown', function(e) {
+                    const stars = container.querySelectorAll('.star');
+                    const focusedStar = document.activeElement;
+                    const currentIndex = Array.from(stars).indexOf(focusedStar);
+                    
+                    let newIndex = currentIndex;
+                    
+                    switch(e.key) {
+                        case 'ArrowRight':
+                        case 'ArrowUp':
+                            newIndex = Math.min(currentIndex + 1, stars.length - 1);
+                            break;
+                        case 'ArrowLeft':
+                        case 'ArrowDown':
+                            newIndex = Math.max(currentIndex - 1, 0);
+                            break;
+                        case 'Enter':
+                        case ' ':
+                            if (currentIndex >= 0) {
+                                stars[currentIndex].click();
+                            }
+                            e.preventDefault();
+                            return;
+                    }
+                    
+                    if (newIndex !== currentIndex && newIndex >= 0) {
+                        stars[newIndex].focus();
+                        e.preventDefault();
+                    }
+                });
+            });
+        });
+
+        // Analytics tracking for research
+        const analyticsData = {
+            session_start: new Date().toISOString(),
+            user_group: '{{ user_group }}',
+            learning_round: {{ learning_round }},
+            interactions: [],
+            ratings_timeline: []
+        };
+
+        function trackInteraction(type, target, data = {}) {
+            const interaction = {
+                timestamp: new Date().toISOString(),
+                type: type,
+                target: target,
+                data: data,
+                page_url: window.location.href
+            };
+            
+            analyticsData.interactions.push(interaction);
+            console.log('Interaction tracked:', interaction);
+        }
+
+        // Track various user interactions
+        document.addEventListener('click', function(e) {
+            if (e.target.classList.contains('star')) {
+                trackInteraction('star_click', 'rating_star', {
+                    recipe_id: e.target.closest('.rating-stars').dataset.recipeId,
+                    rating: e.target.dataset.rating
+                });
+            } else if (e.target.classList.contains('btn-rate')) {
+                trackInteraction('rate_button_click', 'rate_button', {
+                    recipe_id: e.target.dataset.recipeId
+                });
+            } else if (e.target.id === 'next-round-btn') {
+                trackInteraction('next_round_click', 'next_round_button');
+            }
+        });
+
+        // Performance tracking
+        window.addEventListener('load', function() {
+            const loadTime = performance.now();
+            console.log(`✅ Page loaded in ${loadTime.toFixed(2)}ms`);
+            
+            // Track user engagement
+            let interactionCount = 0;
+            document.addEventListener('click', function() {
+                interactionCount++;
+            });
+            
+            // Log engagement after 30 seconds
+            setTimeout(() => {
+                console.log(`📊 User interactions in 30s: ${interactionCount}`);
+            }, 30000);
+        });
+
+        // Initialize tooltips (if Bootstrap tooltips are enabled)
+        document.addEventListener('DOMContentLoaded', function() {
+            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            tooltipTriggerList.map(function(tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        });
+
+        // Debug info
+        console.log('✅ GreenRec Enhanced Study System initialized');
+        console.log('📊 User Group:', '{{ user_group }}');
+        console.log('🔄 Learning Round:', {{ learning_round }});
+        console.log('👁️ Show Scores:', {{ show_scores | lower }});
+        console.log('🍽️ Total Recipes:', totalRecipes);
+        console.log('🎯 Analytics tracking enabled');
+        console.log('♿ Accessibility features enabled');
+    </script>
+
+    <!-- Schema.org structured data for SEO and research indexing -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "ResearchProject",
+        "name": "GreenRec - Környezettudatos Recept Ajánlórendszer",
+        "description": "A/B/C teszt alapú kutatás a fenntartható étkezési szokások támogatására",
+        "about": "Recommendation Systems, Sustainability, Food Choice",
+        "creator": {
+            "@type": "Person",
+            "name": "GreenRec Research Team"
+        },
+        "dateCreated": "{{ session.get('session_started', '2025-06-26') }}",
+        "version": "2.0",
+        "isPartOf": {
+            "@type": "ScholarlyArticle",
+            "name": "Content-based Sustainability Recommendation Systems"
+        }
+    }
+    </script>
+</body>
+</html>
