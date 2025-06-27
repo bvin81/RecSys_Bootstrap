@@ -23,6 +23,14 @@ try:
 except ImportError as e:
     logger.error(f"❌ Import hiba: {e}")
 
+try:
+    from visualizations import visualizer
+    VISUALIZATIONS_AVAILABLE = True
+    logger.info("✅ Vizualizációs modul betöltve")
+except ImportError as e:
+    VISUALIZATIONS_AVAILABLE = False
+    logger.warning(f"⚠️ Vizualizációs modul nem elérhető: {e}")
+
 # Flask alkalmazás inicializálás
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -1013,6 +1021,186 @@ def metrics_dashboard():
     except Exception as e:
         logger.error(f"❌ Metrics dashboard hiba: {e}")
         return render_template('metrics.html', metrics={})
+
+@app.route('/visualizations')
+def visualizations():
+    """Interaktív vizualizációs dashboard"""
+    try:
+        if not VISUALIZATIONS_AVAILABLE:
+            flash('Vizualizációk jelenleg nem érhetők el', 'warning')
+            return redirect(url_for('stats'))
+        
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        
+        conn = get_db_connection()
+        if conn is None:
+            flash('Adatbázis kapcsolati hiba', 'error')
+            return render_template('visualizations.html', charts={})
+        
+        cur = conn.cursor()
+        
+        # Csoportonkénti felhasználói statisztikák
+        cur.execute("""
+            SELECT group_name, COUNT(*) as user_count
+            FROM users 
+            GROUP BY group_name 
+            ORDER BY group_name
+        """)
+        group_stats = [{'group': row[0], 'user_count': row[1]} for row in cur.fetchall()]
+        
+        # Választási adatok részletes lekérése
+        cur.execute("""
+            SELECT 
+                u.group_name as group,
+                r.hsi, r.esi, r.ppi,
+                (0.4 * r.hsi + 0.4 * (255 - r.esi) + 0.2 * r.ppi) as composite_score,
+                uc.chosen_at,
+                r.title as recipe_title
+            FROM user_choices uc
+            JOIN users u ON uc.user_id = u.id
+            JOIN recipes r ON uc.recipe_id = r.id
+            ORDER BY uc.chosen_at
+        """)
+        
+        choice_data = []
+        for row in cur.fetchall():
+            choice_data.append({
+                'group': row[0],
+                'hsi': row[1],
+                'esi': row[2], 
+                'ppi': row[3],
+                'composite_score': row[4],
+                'chosen_at': row[5],
+                'recipe_title': row[6]
+            })
+        
+        conn.close()
+        
+        # Vizualizációk generálása
+        charts = {}
+        
+        if group_stats:
+            charts['group_distribution'] = visualizer.group_distribution_chart(group_stats)
+        
+        if choice_data:
+            charts['composite_analysis'] = visualizer.composite_score_analysis(choice_data)
+            charts['hsi_esi_ppi_breakdown'] = visualizer.hsi_esi_ppi_breakdown(choice_data)
+            charts['timeline_analysis'] = visualizer.choice_timeline_analysis(choice_data)
+        
+        return render_template('visualizations.html', 
+                             charts=charts,
+                             stats={'total_choices': len(choice_data),
+                                   'total_groups': len(group_stats)})
+        
+    except Exception as e:
+        logger.error(f"❌ Visualizations hiba: {e}")
+        flash('Hiba történt a vizualizációk generálása során', 'error')
+        return render_template('visualizations.html', charts={})
+
+@app.route('/export/statistical_report')
+def export_statistical_report():
+    """Részletes statisztikai jelentés exportálása JSON formátumban"""
+    try:
+        if not VISUALIZATIONS_AVAILABLE:
+            return jsonify({'error': 'Statisztikai modul nem elérhető'}), 503
+            
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Adatbázis kapcsolati hiba'}), 500
+        
+        cur = conn.cursor()
+        
+        # Ugyanaz az adatlekérés mint a visualizations route-ban
+        cur.execute("""
+            SELECT 
+                u.group_name as group,
+                r.hsi, r.esi, r.ppi,
+                (0.4 * r.hsi + 0.4 * (255 - r.esi) + 0.2 * r.ppi) as composite_score,
+                uc.chosen_at
+            FROM user_choices uc
+            JOIN users u ON uc.user_id = u.id
+            JOIN recipes r ON uc.recipe_id = r.id
+            ORDER BY uc.chosen_at
+        """)
+        
+        choice_data = []
+        for row in cur.fetchall():
+            choice_data.append({
+                'group': row[0],
+                'hsi': row[1],
+                'esi': row[2],
+                'ppi': row[3], 
+                'composite_score': row[4],
+                'chosen_at': row[5].isoformat() if row[5] else None
+            })
+        
+        # Csoportstatisztikák
+        cur.execute("""
+            SELECT group_name, COUNT(*) as user_count
+            FROM users GROUP BY group_name ORDER BY group_name
+        """)
+        group_stats = [{'group': row[0], 'user_count': row[1]} for row in cur.fetchall()]
+        
+        conn.close()
+        
+        # Statisztikai jelentés generálása
+        report = visualizer.export_statistical_report(choice_data, group_stats)
+        
+        return jsonify(report), 200, {
+            'Content-Type': 'application/json',
+            'Content-Disposition': 'attachment; filename=greenrec_statistical_report.json'
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Statistical report export hiba: {e}")
+        return jsonify({'error': f'Hiba: {str(e)}'}), 500
+
+@app.route('/charts/<chart_type>')  
+def generate_chart(chart_type):
+    """Egyedi chart generálás AJAX hívásokhoz"""
+    try:
+        if not VISUALIZATIONS_AVAILABLE:
+            return jsonify({'error': 'Vizualizációk nem elérhetők'}), 503
+            
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Adatbázis hiba'}), 500
+            
+        # Chart típus alapján megfelelő adatok lekérése és chart generálása
+        if chart_type == 'group_distribution':
+            cur = conn.cursor()
+            cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name ORDER BY group_name")
+            data = [{'group': row[0], 'user_count': row[1]} for row in cur.fetchall()]
+            chart_data = visualizer.group_distribution_chart(data)
+            
+        elif chart_type == 'composite_scores':
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT u.group_name, r.hsi, r.esi, r.ppi,
+                       (0.4 * r.hsi + 0.4 * (255 - r.esi) + 0.2 * r.ppi) as composite_score,
+                       uc.chosen_at
+                FROM user_choices uc
+                JOIN users u ON uc.user_id = u.id
+                JOIN recipes r ON uc.recipe_id = r.id
+            """)
+            data = [{'group': row[0], 'hsi': row[1], 'esi': row[2], 'ppi': row[3], 
+                    'composite_score': row[4], 'chosen_at': row[5]} for row in cur.fetchall()]
+            chart_data = visualizer.composite_score_analysis(data)
+            
+        else:
+            return jsonify({'error': 'Ismeretlen chart típus'}), 400
+            
+        conn.close()
+        
+        if chart_data:
+            return jsonify({'chart': chart_data})
+        else:
+            return jsonify({'error': 'Chart generálási hiba'}), 500
+            
+    except Exception as e:
+        logger.error(f"❌ Chart generation hiba: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
