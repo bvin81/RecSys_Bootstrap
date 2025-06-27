@@ -200,18 +200,21 @@ def load_json_data(json_file_path):
         # Oszlopnevek mapping a projektre jellemző nevek alapján
         column_mapping = {
             'recipeid': 'id',
-            'recipe_id': 'id',
+            'recipe_id': 'id', 
             'name': 'title',
             'recipe_name': 'title',
             'nutri_score': 'hsi',
             'nutrition_score': 'hsi',
             'health_score': 'hsi',
+            'HSI': 'hsi',          # 🔥 ÚJ
             'env_score': 'esi',
             'environment_score': 'esi',
             'environmental_score': 'esi',
+            'ESI': 'esi',          # 🔥 ÚJ
             'meal_score': 'ppi',
             'popularity_score': 'ppi',
-            'pop_score': 'ppi'
+            'pop_score': 'ppi',
+            'PPI': 'ppi'           # 🔥 ÚJ
         }
         
         # Oszlopnevek átnevezése ha szükséges
