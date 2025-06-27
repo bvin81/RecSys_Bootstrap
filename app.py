@@ -991,6 +991,72 @@ def export_metrics():
         logger.error(f"❌ Metrikák export hiba: {e}")
         return jsonify({'error': 'Export hiba'}), 500
 
+# Add hozzá ezt a route-ot az app.py-ba (az /export/metrics után):
+
+@app.route('/metrics/dashboard')
+def metrics_dashboard():
+    """Metrikák dashboard oldal"""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            flash('Adatbázis kapcsolati hiba', 'error')
+            return render_template('metrics.html', metrics={})
+        
+        cur = conn.cursor()
+        
+        # Alapvető számok
+        cur.execute("SELECT COUNT(*) FROM recommendation_sessions")
+        total_sessions = cur.fetchone()[0]
+        
+        cur.execute("""
+            SELECT COUNT(*) FROM user_choices uc
+            JOIN recommendation_sessions rs ON uc.user_id = rs.user_id
+            WHERE uc.selected_at > rs.session_timestamp
+            AND uc.selected_at < rs.session_timestamp + INTERVAL '30 minutes'
+        """)
+        total_choices = cur.fetchone()[0]
+        
+        # CTR számítása
+        ctr = (total_choices / total_sessions * 100) if total_sessions > 0 else 0
+        
+        # Csoportonkénti stats
+        cur.execute("""
+            SELECT 
+                rs.user_group,
+                COUNT(rs.id) as sessions,
+                COUNT(uc.id) as choices
+            FROM recommendation_sessions rs
+            LEFT JOIN user_choices uc ON rs.user_id = uc.user_id
+                AND uc.selected_at > rs.session_timestamp
+                AND uc.selected_at < rs.session_timestamp + INTERVAL '30 minutes'
+            GROUP BY rs.user_group
+            ORDER BY rs.user_group
+        """)
+        
+        group_stats = cur.fetchall()
+        conn.close()
+        
+        metrics_summary = {
+            'total_sessions': total_sessions,
+            'total_choices': total_choices,
+            'overall_ctr': round(ctr, 1),
+            'group_stats': [
+                {
+                    'group': stat[0],
+                    'sessions': stat[1],
+                    'choices': stat[2],
+                    'ctr': round((stat[2] / stat[1] * 100) if stat[1] > 0 else 0, 1)
+                }
+                for stat in group_stats
+            ]
+        }
+        
+        return render_template('metrics.html', metrics=metrics_summary)
+        
+    except Exception as e:
+        logger.error(f"❌ Metrics dashboard hiba: {e}")
+        return render_template('metrics.html', metrics={})
+
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
     logger.info("🚀 GreenRec alkalmazás indítása...")
