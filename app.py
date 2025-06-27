@@ -1,6 +1,9 @@
 import os
 import logging
 import json
+import random
+import numpy as np
+from datetime import datetime, timedelta
 from flask import Flask, request, render_template, redirect, url_for, session, flash, jsonify, Response
 
 # Logging beállítása
@@ -9,44 +12,33 @@ logger = logging.getLogger(__name__)
 
 try:
     import psycopg2
+    from psycopg2 import sql
     from urllib.parse import urlparse
-    logger.info("✅ psycopg2 importálva")
-except ImportError as e:
-    logger.error(f"❌ psycopg2 import hiba: {e}")
-    psycopg2 = None
-
-try:
     from werkzeug.security import generate_password_hash, check_password_hash
+    import pandas as pd
     from sklearn.feature_extraction.text import CountVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
     from sklearn.preprocessing import MinMaxScaler
-    import pandas as pd
-    import numpy as np
     logger.info("✅ Összes dependency importálva")
 except ImportError as e:
-    logger.error(f"❌ Dependency import hiba: {e}")
-    raise
+    logger.error(f"❌ Import hiba: {e}")
 
-from datetime import datetime
-
-# Flask app inicializálás
+# Flask alkalmazás inicializálás
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'fejlesztesi_kulcs_123_heroku')
-app.config['DEBUG'] = False
-logger.info("🚀 Flask app inicializálva")
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 
 # ===== DATABASE CONNECTION =====
 def get_db_connection():
-    """PostgreSQL kapcsolat létrehozása hibakezeléssel"""
+    """Adatbázis kapcsolat létrehozása robusztus hibakezeléssel"""
     try:
-        DATABASE_URL = os.environ.get('DATABASE_URL')
-        if DATABASE_URL:
-            # Heroku PostgreSQL URL javítása
-            if DATABASE_URL.startswith('postgres://'):
-                DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+        database_url = os.environ.get('DATABASE_URL')
+        if database_url:
+            # Heroku Postgres URL javítás
+            if database_url.startswith('postgres://'):
+                database_url = database_url.replace('postgres://', 'postgresql://', 1)
                 logger.info("✅ Database URL javítva postgresql://-re")
             
-            result = urlparse(DATABASE_URL)
+            result = urlparse(database_url)
             conn = psycopg2.connect(
                 dbname=result.path[1:],
                 user=result.username,
@@ -72,6 +64,7 @@ class GreenRecRecommender:
         self.vectorizer = CountVectorizer(stop_words='english', max_features=1000)
         self.scaler = MinMaxScaler()
         self.ingredient_matrix = None
+        self.user_history = {}  # Felhasználói előzmények tárolása
         self.load_recipes()
         logger.info("✅ Ajánlórendszer sikeresen inicializálva")
     
@@ -93,58 +86,56 @@ class GreenRecRecommender:
             except psycopg2.errors.UndefinedTable:
                 logger.warning("⚠️  Recipes tábla nem létezik")
                 logger.warning("⚠️  Nincs recept adat, dummy adatok létrehozása")
+                conn.close()
                 self.create_dummy_data()
                 return
-            except Exception as e:
-                logger.warning(f"⚠️  Recipes tábla nem létezik: {e}")
+            
+            # Receptek betöltése
+            if count > 0:
+                query = """
+                    SELECT id, title, hsi, esi, ppi, category, ingredients, instructions, images
+                    FROM recipes 
+                    ORDER BY id
+                """
+                self.recipes_df = pd.read_sql_query(query, conn)
+                logger.info(f"✅ {len(self.recipes_df)} recept betöltve az adatbázisból")
+                
+                # Adatok előfeldolgozása
+                self.preprocess_data()
+            else:
                 logger.warning("⚠️  Nincs recept adat, dummy adatok létrehozása")
                 self.create_dummy_data()
-                return
                 
-            # Ha létezik a tábla, betöltjük az adatokat
-            query = """
-                SELECT id, title, hsi, esi, ppi, category, ingredients, instructions, images
-                FROM recipes
-                """
-            self.recipes_df = pd.read_sql_query(query, conn)
-            
-            if len(self.recipes_df) == 0:
-                logger.warning("⚠️  Üres recipes tábla, dummy adatok létrehozása")
-                self.create_dummy_data()
-                return
-                
-            logger.info(f"✅ {len(self.recipes_df)} recept betöltve az adatbázisból")
-            self.preprocess_data()
+            conn.close()
             
         except Exception as e:
-            logger.error(f"❌ Receptek betöltési hiba: {e}")
-            logger.warning("⚠️  Fallback: dummy adatok létrehozása")
+            logger.error(f"❌ Recept betöltési hiba: {e}")
             self.create_dummy_data()
     
     def create_dummy_data(self):
-        """Dummy adatok létrehozása ha nincs adatbázis"""
+        """3 dummy recept létrehozása ha nincs adat"""
         logger.info("🔧 Dummy adatok létrehozása...")
         dummy_recipes = [
             {
                 'id': 1,
                 'title': 'Zöldséges quinoa saláta',
-                'hsi': 85.5,
-                'esi': 45.2,
-                'ppi': 78.0,
+                'hsi': 95.2,
+                'esi': 24.4,
+                'ppi': 67.8,
                 'category': 'Saláták',
                 'ingredients': 'quinoa, uborka, paradicsom, avokádó, citrom',
-                'instructions': 'Főzd meg a quinoát, keverd össze a zöldségekkel.',
+                'instructions': 'Főzd meg a quinoát, várd meg hogy kihűljön. Vágd apróra a zöldségeket.',
                 'images': 'https://via.placeholder.com/300x200?text=Quinoa+Salat'
             },
             {
                 'id': 2,
                 'title': 'Vegán chili sin carne',
-                'hsi': 78.3,
-                'esi': 38.7,
-                'ppi': 82.5,
+                'hsi': 76.3,
+                'esi': 15.1,
+                'ppi': 84.5,
                 'category': 'Főételek',
-                'ingredients': 'bab, kukorica, paprika, hagyma, paradicsom',
-                'instructions': 'Dinszteld le a zöldségeket, add hozzá a babot.',
+                'ingredients': 'vörös bab, kukorica, paprika, hagyma, paradicsom',
+                'instructions': 'Dinszteld le a hagymát és paprikát. Add hozzá a babot.',
                 'images': 'https://via.placeholder.com/300x200?text=Vegan+Chili'
             },
             {
@@ -182,43 +173,145 @@ class GreenRecRecommender:
         except Exception as e:
             logger.error(f"❌ Adatok előfeldolgozási hiba: {e}")
     
-    def get_recommendations(self, user_preferences=None, num_recommendations=5):
-        """Ajánlások generálása hibakezeléssel"""
+    def get_recommendations(self, user_preferences=None, num_recommendations=5, user_id=None, diversity_factor=0.3):
+        """
+        🎯 JAVÍTOTT ajánlások generálása változatossággal és personalizációval
+        """
         try:
             if self.recipes_df is None or len(self.recipes_df) == 0:
                 logger.warning("⚠️  Nincs elérhető recept adat")
                 return []
             
+            # 1. ALAPVETŐ PONTSZÁMOK SZÁMÍTÁSA
+            df = self.recipes_df.copy()
+            
             # Kompozit pontszám számítása
-            self.recipes_df['composite_score'] = (
-                0.4 * self.recipes_df['hsi'] +
-                0.4 * self.recipes_df['esi_inv'] +
-                0.2 * self.recipes_df['ppi']
+            df['composite_score'] = (
+                0.4 * df['hsi'] +
+                0.4 * df['esi_inv'] +
+                0.2 * df['ppi']
             )
             
-            # Top receptek kiválasztása
-            top_recipes = self.recipes_df.nlargest(num_recommendations, 'composite_score')
+            # 2. FELHASZNÁLÓI ELŐZMÉNYEK FIGYELEMBEVÉTELE
+            excluded_ids = []
+            if user_id and user_id in self.user_history:
+                # Kizárjuk a már látott recepteket (utolsó 10 ajánlás)
+                excluded_ids = self.user_history[user_id][-10:]
+                df = df[~df['id'].isin(excluded_ids)]
+                logger.info(f"🔍 {len(excluded_ids)} már látott recept kizárva")
             
+            # 3. KATEGÓRIA DIVERZITÁS BIZTOSÍTÁSA
+            available_categories = df['category'].unique()
             recommendations = []
-            for _, recipe in top_recipes.iterrows():
-                recommendations.append({
-                    'id': int(recipe['id']),
-                    'title': recipe['title'],
-                    'hsi': round(float(recipe['hsi']) * 100, 1),  # Visszaalakítás 0-100 skálára
-                    'esi': round(float(recipe['esi']) * 100, 1),
-                    'ppi': round(float(recipe['ppi']) * 100, 1),
-                    'category': recipe['category'],
-                    'ingredients': recipe['ingredients'],
-                    'instructions': recipe['instructions'],
-                    'images': recipe.get('images', 'https://via.placeholder.com/300x200?text=No+Image')
+            
+            # Először válasszunk ki minden kategóriából legalább 1 receptet
+            for category in available_categories[:num_recommendations]:
+                category_recipes = df[df['category'] == category]
+                if not category_recipes.empty:
+                    # Weighted random selection (magasabb pontszám = nagyobb esély)
+                    weights = category_recipes['composite_score'].values
+                    weights = (weights - weights.min() + 0.1) ** 2  # Kvadratikus súlyozás
+                    
+                    try:
+                        selected_idx = np.random.choice(
+                            category_recipes.index, 
+                            p=weights/weights.sum()
+                        )
+                        recommendations.append(category_recipes.loc[selected_idx])
+                        df = df.drop(selected_idx)  # Eltávolítás, hogy ne válasszuk újra
+                    except:
+                        # Ha hiba van a random choice-szal, vegyük a legjobbat
+                        recommendations.append(category_recipes.nlargest(1, 'composite_score').iloc[0])
+            
+            # 4. FENNMARADÓ HELYEK FELTÖLTÉSE
+            remaining_slots = num_recommendations - len(recommendations)
+            if remaining_slots > 0 and not df.empty:
+                # Mix stratégia: részben top pontszámú, részben random
+                top_count = max(1, int(remaining_slots * (1 - diversity_factor)))
+                random_count = remaining_slots - top_count
+                
+                # Top pontszámú receptek
+                if top_count > 0:
+                    top_recipes = df.nlargest(min(top_count, len(df)), 'composite_score')
+                    recommendations.extend(top_recipes.to_dict('records'))
+                    df = df.drop(top_recipes.index)
+                
+                # Random receptek (weighted)
+                if random_count > 0 and not df.empty:
+                    weights = df['composite_score'].values
+                    weights = (weights - weights.min() + 0.1)  # Elkerüljük a 0 súlyokat
+                    
+                    selected_indices = np.random.choice(
+                        df.index,
+                        size=min(random_count, len(df)),
+                        replace=False,
+                        p=weights/weights.sum()
+                    )
+                    recommendations.extend(df.loc[selected_indices].to_dict('records'))
+            
+            # 5. FELHASZNÁLÓI ELŐZMÉNYEK FRISSÍTÉSE
+            if user_id:
+                if user_id not in self.user_history:
+                    self.user_history[user_id] = []
+                
+                new_ids = [rec['id'] for rec in recommendations if isinstance(rec, dict)]
+                if not new_ids:  # Ha pandas Series-ek vannak
+                    new_ids = [rec['id'] if isinstance(rec, dict) else rec.id for rec in recommendations]
+                
+                self.user_history[user_id].extend(new_ids)
+                # Korlátozás az utolsó 50 receptre
+                self.user_history[user_id] = self.user_history[user_id][-50:]
+            
+            # 6. RANDOM SHUFFLE ÉS FORMÁTUM ÁTALAKÍTÁSA
+            random.shuffle(recommendations)  # Véletlenszerű sorrend
+            
+            final_recommendations = []
+            for recipe in recommendations[:num_recommendations]:
+                if isinstance(recipe, dict):
+                    # Már dict formátumban van
+                    formatted_recipe = recipe
+                else:
+                    # Pandas Series -> dict konverzió
+                    formatted_recipe = recipe.to_dict()
+                
+                # Pontszámok visszaalakítása megjelenítéshez (0-100 skála)
+                final_recommendations.append({
+                    'id': int(formatted_recipe['id']),
+                    'title': formatted_recipe['title'],
+                    'hsi': round(float(formatted_recipe['hsi']) * 100, 1),
+                    'esi': round(float(formatted_recipe['esi']) * 100, 1),
+                    'ppi': round(float(formatted_recipe['ppi']) * 100, 1),
+                    'category': formatted_recipe['category'],
+                    'ingredients': formatted_recipe['ingredients'],
+                    'instructions': formatted_recipe['instructions'],
+                    'images': formatted_recipe.get('images', 'https://via.placeholder.com/300x200?text=No+Image')
                 })
             
-            logger.info(f"✅ {len(recommendations)} ajánlás generálva")
-            return recommendations
+            logger.info(f"✅ {len(final_recommendations)} változatos ajánlás generálva (diversity: {diversity_factor})")
+            return final_recommendations
             
         except Exception as e:
             logger.error(f"❌ Ajánlási hiba: {e}")
             return []
+    
+    def get_personalized_recommendations(self, user_id, user_preferences=None, num_recommendations=5):
+        """Személyre szabott ajánlások felhasználói preferenciák alapján"""
+        # Alapértelmezett diversity_factor beállítás felhasználói típus szerint
+        diversity_factors = {
+            'A': 0.4,  # Kontroll csoport - több változatosság
+            'B': 0.3,  # Pontszámos - mérsékelt változatosság  
+            'C': 0.2   # Magyarázatos - kevesebb változatosság (tudatosabb választás)
+        }
+        
+        user_group = user_preferences.get('group', 'A') if user_preferences else 'A'
+        diversity = diversity_factors.get(user_group, 0.3)
+        
+        return self.get_recommendations(
+            user_preferences=user_preferences,
+            num_recommendations=num_recommendations,
+            user_id=user_id,
+            diversity_factor=diversity
+        )
 
 # Globális ajánlórendszer inicializálás
 logger.info("🔧 Globális ajánlórendszer inicializálása...")
@@ -243,120 +336,116 @@ def log_recommendations(user_id, recommendations):
         cur.execute("""
             CREATE TABLE IF NOT EXISTS recommendation_sessions (
                 id SERIAL PRIMARY KEY,
-                user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+                user_id INTEGER NOT NULL,
                 session_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                recommendations_json TEXT NOT NULL
-            );
+                recommended_recipe_ids TEXT NOT NULL,
+                recommendation_count INTEGER DEFAULT 5
+            )
         """)
         
-        # Ajánlások mentése JSON formátumban
-        recommendations_json = json.dumps(recommendations, ensure_ascii=False)
-        
+        # Session adatok beszúrása
+        recipe_ids = ','.join([str(rec['id']) for rec in recommendations])
         cur.execute("""
-            INSERT INTO recommendation_sessions (user_id, recommendations_json)
-            VALUES (%s, %s)
-        """, (user_id, recommendations_json))
+            INSERT INTO recommendation_sessions (user_id, recommended_recipe_ids, recommendation_count)
+            VALUES (%s, %s, %s)
+        """, (user_id, recipe_ids, len(recommendations)))
         
         conn.commit()
-        cur.close()
         conn.close()
-        
-        logger.info(f"✅ Ajánlások rögzítve user_id={user_id}, {len(recommendations)} recept")
+        logger.info(f"✅ Ajánlások logolva: user={user_id}, recipes={recipe_ids}")
         
     except Exception as e:
-        logger.error(f"❌ Ajánlás logging hiba: {e}")
+        logger.error(f"❌ Ajánlási logging hiba: {e}")
 
-# ===== AUTHENTICATION FUNCTIONS =====
-def check_user_credentials(username, password):
-    """Felhasználó hitelesítés"""
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            logger.error("❌ Nincs adatbázis kapcsolat a bejelentkezéshez")
-            return False, None
-            
-        cur = conn.cursor()
-        
-        # Ellenőrizzük hogy létezik-e a users tábla
-        try:
-            cur.execute("""
-                SELECT id, password_hash, group_name 
-                FROM users 
-                WHERE username = %s
-                """, (username,))
-        except psycopg2.errors.UndefinedTable:
-            logger.error("❌ Users tábla nem létezik")
-            return False, None
-            
-        user = cur.fetchone()
-        conn.close()
-        
-        if user and check_password_hash(user[1], password):
-            return True, {'id': user[0], 'username': username, 'group': user[2]}
-        return False, None
-        
-    except Exception as e:
-        logger.error(f"❌ Bejelentkezés hiba: {e}")
-        return False, None
-
+# ===== USER MANAGEMENT =====
 def create_user(username, password, group_name):
     """Új felhasználó létrehozása"""
     try:
         conn = get_db_connection()
         if conn is None:
-            logger.error("❌ Nincs adatbázis kapcsolat a regisztrációhoz")
             return False, "Adatbázis kapcsolati hiba"
-            
+        
         cur = conn.cursor()
         
-        # Ellenőrizzük, hogy létezik-e már a felhasználó
-        try:
-            cur.execute("SELECT id FROM users WHERE username = %s", (username,))
-            if cur.fetchone():
-                return False, "A felhasználónév már foglalt"
-        except psycopg2.errors.UndefinedTable:
-            logger.error("❌ Users tábla nem létezik")
-            return False, "Adatbázis nincs inicializálva"
+        # Users tábla létrehozása ha nem létezik
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id SERIAL PRIMARY KEY,
+                username VARCHAR(255) UNIQUE NOT NULL,
+                password_hash VARCHAR(255) NOT NULL,
+                group_name VARCHAR(10) NOT NULL DEFAULT 'A',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         
-        # Jelszó hash-elése és felhasználó létrehozása
+        # Ellenőrizzük, hogy létezik-e már a felhasználó
+        cur.execute("SELECT id FROM users WHERE username = %s", (username,))
+        if cur.fetchone():
+            conn.close()
+            return False, "Ez a felhasználónév már foglalt!"
+        
+        # Új felhasználó beszúrása
         password_hash = generate_password_hash(password)
         cur.execute("""
-            INSERT INTO users (username, password_hash, group_name, created_at)
-            VALUES (%s, %s, %s, %s)
-            """, (username, password_hash, group_name, datetime.now()))
+            INSERT INTO users (username, password_hash, group_name) 
+            VALUES (%s, %s, %s)
+        """, (username, password_hash, group_name))
         
         conn.commit()
         conn.close()
-        logger.info(f"✅ Új felhasználó létrehozva: {username} ({group_name})")
-        return True, "Sikeres regisztráció"
+        logger.info(f"✅ Új felhasználó létrehozva: {username} (csoport: {group_name})")
+        return True, "Sikeres regisztráció!"
         
     except Exception as e:
-        logger.error(f"❌ Regisztrációs hiba: {e}")
-        return False, f"Regisztrációs hiba: {str(e)}"
+        logger.error(f"❌ Felhasználó létrehozási hiba: {e}")
+        return False, "Hiba a regisztráció során"
 
-# ===== ROUTES =====
+def check_user_credentials(username, password):
+    """Felhasználói hitelesítés ellenőrzése"""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return False, None
+        
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT id, username, password_hash, group_name 
+            FROM users WHERE username = %s
+        """, (username,))
+        
+        user = cur.fetchone()
+        conn.close()
+        
+        if user and check_password_hash(user[2], password):
+            return True, {
+                'id': user[0],
+                'username': user[1],
+                'group': user[3]
+            }
+        return False, None
+        
+    except Exception as e:
+        logger.error(f"❌ Hitelesítési hiba: {e}")
+        return False, None
+
+# ===== FLASK ROUTES =====
 @app.route('/')
 def index():
-    """Főoldal - bejelentkezés ellenőrzéssel"""
+    """Főoldal - csak bejelentkezett felhasználóknak"""
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
     try:
-        if recommender is None:
-            flash('Az ajánlórendszer jelenleg nem elérhető.', 'warning')
-            recommendations = []
-        else:
-            recommendations = recommender.get_recommendations(num_recommendations=5)
-        
+        username = session.get('username', 'Ismeretlen')
         user_group = session.get('user_group', 'A')
         
         return render_template('index.html', 
-                             recommendations=recommendations,
+                             username=username,
                              user_group=user_group,
-                             username=session.get('username'))
+                             recommendations=[])
     except Exception as e:
         logger.error(f"❌ Index oldal hiba: {e}")
-        flash('Hiba történt az ajánlások betöltésekor.', 'error')
+        flash('Hiba történt az oldal betöltésekor.', 'error')
         return render_template('index.html', 
                              recommendations=[], 
                              user_group='A',
@@ -431,19 +520,33 @@ def logout():
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
-    """AJAX ajánlások endpoint BŐVÍTETT LOGGING-GAL"""
+    """🎯 AJAX ajánlások endpoint VÁLTOZATOS AJÁNLÁSOKKAL"""
     if 'user_id' not in session:
         return jsonify({'error': 'Nincs bejelentkezve'}), 401
     
     try:
         if recommender is None:
             return jsonify({'error': 'Ajánlórendszer nem elérhető'}), 500
-            
-        recommendations = recommender.get_recommendations(num_recommendations=5)
         
-        # ✅ ÚJ: Ajánlások logging-ja az adatbázisba
-        log_recommendations(session['user_id'], recommendations)
+        # Felhasználói csoport és preferenciák
+        user_group = session.get('user_group', 'A')
+        user_preferences = {
+            'group': user_group,
+            'user_id': session['user_id']
+        }
         
+        # 🚀 VÁLTOZATOS ajánlások generálása
+        recommendations = recommender.get_personalized_recommendations(
+            user_id=session['user_id'],
+            user_preferences=user_preferences,
+            num_recommendations=5
+        )
+        
+        # ✅ Ajánlások logging-ja az adatbázisba
+        if recommendations:
+            log_recommendations(session['user_id'], recommendations)
+        
+        logger.info(f"✅ {len(recommendations)} változatos ajánlás generálva user_id={session['user_id']}, group={user_group}")
         return jsonify({'recommendations': recommendations})
         
     except Exception as e:
@@ -469,32 +572,34 @@ def select_recipe():
         
         cur = conn.cursor()
         
-        # Ellenőrizzük hogy létezik-e a user_choices tábla
-        try:
-            cur.execute("""
-                INSERT INTO user_choices (user_id, recipe_id, selected_at)
-                VALUES (%s, %s, %s)
-                """, (session['user_id'], recipe_id, datetime.now()))
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"✅ Recept választás rögzítve: user={session['user_id']}, recipe={recipe_id}")
-            return jsonify({'success': True})
-            
-        except psycopg2.errors.UndefinedTable:
-            logger.warning("⚠️  user_choices tábla nem létezik")
-            return jsonify({'success': True})  # Silent fail, ne akadjon meg ezen
+        # User choices tábla létrehozása ha nem létezik
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS user_choices (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                recipe_id INTEGER NOT NULL,
+                selected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Választás rögzítése
+        cur.execute("""
+            INSERT INTO user_choices (user_id, recipe_id, selected_at)
+            VALUES (%s, %s, %s)
+            """, (session['user_id'], recipe_id, datetime.now()))
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"✅ Recept választás rögzítve: user={session['user_id']}, recipe={recipe_id}")
+        return jsonify({'success': True})
         
     except Exception as e:
         logger.error(f"❌ Recept választás hiba: {e}")
-        return jsonify({'error': 'Hiba a választás rögzítésekor'}), 500
+        return jsonify({'error': 'Hiba történt a választás rögzítésekor'}), 500
 
 @app.route('/stats')
 def stats():
-    """Statisztikai oldal"""
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
+    """Statisztikai áttekintő oldal"""
     try:
         conn = get_db_connection()
         if conn is None:
@@ -503,372 +608,258 @@ def stats():
         
         cur = conn.cursor()
         
-        # Alapvető statisztikák lekérdezése
+        # Alapvető statisztikák
         stats = {}
         
+        # Felhasználók száma csoportonként
         try:
-            # Felhasználók száma csoportonként
-            cur.execute("""
-                SELECT group_name, COUNT(*) as count
-                FROM users
-                GROUP BY group_name
-                ORDER BY group_name
-                """)
-            stats['user_groups'] = dict(cur.fetchall())
+            cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name ORDER BY group_name")
+            stats['users_by_group'] = dict(cur.fetchall())
         except:
-            stats['user_groups'] = {}
+            stats['users_by_group'] = {'A': 0, 'B': 0, 'C': 0}
         
+        # Választások száma
         try:
-            # Összes felhasználó
-            cur.execute("SELECT COUNT(*) FROM users")
-            stats['total_users'] = cur.fetchone()[0]
-        except:
-            stats['total_users'] = 0
-        
-        try:
-            # Összes recept
-            cur.execute("SELECT COUNT(*) FROM recipes")
-            stats['total_recipes'] = cur.fetchone()[0]
-        except:
-            stats['total_recipes'] = len(recommender.recipes_df) if recommender and recommender.recipes_df is not None else 0
-        
-        try:
-            # Összes választás
             cur.execute("SELECT COUNT(*) FROM user_choices")
             stats['total_choices'] = cur.fetchone()[0]
         except:
             stats['total_choices'] = 0
         
+        # Receptek száma
+        try:
+            cur.execute("SELECT COUNT(*) FROM recipes")
+            stats['total_recipes'] = cur.fetchone()[0]
+        except:
+            stats['total_recipes'] = 0
+        
         conn.close()
         return render_template('stats.html', stats=stats)
         
     except Exception as e:
-        logger.error(f"❌ Statisztika oldal hiba: {e}")
-        flash('Hiba történt a statisztikák betöltésekor', 'error')
+        logger.error(f"❌ Statisztikák hiba: {e}")
         return render_template('stats.html', stats={})
 
-# ===== EXPORT ROUTES =====
+# ===== EXPORT ENDPOINTS =====
 @app.route('/export/users')
 def export_users():
-    """Felhasználók exportálása CSV-be"""
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
+    """Felhasználók exportálása CSV formátumban"""
     try:
         conn = get_db_connection()
         if conn is None:
             return "Adatbázis kapcsolati hiba", 500
         
         cur = conn.cursor()
-        
-        # Felhasználók adatai
         cur.execute("""
-            SELECT 
-                id,
-                username,
-                group_name,
-                created_at,
-                CASE 
-                    WHEN username LIKE 'user_%' THEN 'teszt'
-                    ELSE 'valós'
-                END as user_type
-            FROM users 
-            ORDER BY created_at
+            SELECT id, username, group_name, created_at,
+            CASE WHEN username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
+            FROM users ORDER BY created_at
         """)
         
-        users = cur.fetchall()
+        users_data = cur.fetchall()
         conn.close()
         
         # CSV generálás
-        import io
-        output = io.StringIO()
-        output.write('id,username,group_name,created_at,user_type\n')
+        csv_content = "id,username,group_name,created_at,user_type\n"
+        for user in users_data:
+            csv_content += f"{user[0]},{user[1]},{user[2]},{user[3]},{user[4]}\n"
         
-        for user in users:
-            output.write(f'{user[0]},{user[1]},{user[2]},{user[3]},{user[4]}\n')
-        
-        # Response
-        response = Response(
-            output.getvalue(),
+        return Response(
+            csv_content,
             mimetype='text/csv',
             headers={'Content-Disposition': 'attachment; filename=greenrec_users.csv'}
         )
         
-        return response
-        
     except Exception as e:
         logger.error(f"❌ Users export hiba: {e}")
-        return f"Export hiba: {str(e)}", 500
+        return "Export hiba", 500
 
 @app.route('/export/choices')
 def export_choices():
-    """Felhasználói választások exportálása CSV-be"""
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
+    """Választások exportálása CSV formátumban"""
     try:
         conn = get_db_connection()
         if conn is None:
             return "Adatbázis kapcsolati hiba", 500
         
         cur = conn.cursor()
-        
-        # Választások részletes adatokkal
         cur.execute("""
             SELECT 
                 uc.id as choice_id,
                 u.username,
                 u.group_name,
                 r.title as recipe_title,
-                r.hsi,
-                r.esi, 
-                r.ppi,
+                r.hsi, r.esi, r.ppi,
                 r.category,
                 uc.selected_at,
-                CASE 
-                    WHEN u.username LIKE 'user_%' THEN 'teszt'
-                    ELSE 'valós'
-                END as user_type
+                CASE WHEN u.username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
             FROM user_choices uc
             JOIN users u ON uc.user_id = u.id  
             JOIN recipes r ON uc.recipe_id = r.id
             ORDER BY uc.selected_at
         """)
         
-        choices = cur.fetchall()
+        choices_data = cur.fetchall()
         conn.close()
         
         # CSV generálás
-        import io
-        output = io.StringIO()
-        output.write('choice_id,username,group_name,recipe_title,hsi,esi,ppi,category,selected_at,user_type\n')
+        csv_content = "choice_id,username,group_name,recipe_title,hsi,esi,ppi,category,selected_at,user_type\n"
+        for choice in choices_data:
+            csv_content += f"{choice[0]},{choice[1]},{choice[2]},{choice[3]},{choice[4]},{choice[5]},{choice[6]},{choice[7]},{choice[8]},{choice[9]}\n"
         
-        for choice in choices:
-            # CSV-safe string formatting
-            title = str(choice[3]).replace(',', ';').replace('\n', ' ')
-            output.write(f'{choice[0]},{choice[1]},{choice[2]},"{title}",{choice[4]},{choice[5]},{choice[6]},{choice[7]},{choice[8]},{choice[9]}\n')
-        
-        # Response
-        response = Response(
-            output.getvalue(),
+        return Response(
+            csv_content,
             mimetype='text/csv',
             headers={'Content-Disposition': 'attachment; filename=greenrec_choices.csv'}
         )
         
-        return response
-        
     except Exception as e:
         logger.error(f"❌ Choices export hiba: {e}")
-        return f"Export hiba: {str(e)}", 500
-
-@app.route('/export/recommendations')
-def export_recommendations():
-    """Ajánlási szeszók exportálása"""
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return "Adatbázis kapcsolati hiba", 500
-        
-        cur = conn.cursor()
-        
-        # Ajánlási szeszók lekérdezése
-        cur.execute("""
-            SELECT 
-                rs.id as session_id,
-                u.username,
-                u.group_name,
-                rs.session_timestamp,
-                rs.recommendations_json,
-                CASE 
-                    WHEN u.username LIKE 'user_%' THEN 'teszt'
-                    ELSE 'valós'
-                END as user_type
-            FROM recommendation_sessions rs
-            JOIN users u ON rs.user_id = u.id
-            ORDER BY rs.session_timestamp
-        """)
-        
-        sessions = cur.fetchall()
-        conn.close()
-        
-        # CSV generálás
-        import io
-        output = io.StringIO()
-        output.write('session_id,username,group_name,session_timestamp,recipe_1_id,recipe_1_title,recipe_2_id,recipe_2_title,recipe_3_id,recipe_3_title,recipe_4_id,recipe_4_title,recipe_5_id,recipe_5_title,user_type\n')
-        
-        for session in sessions:
-            recommendations = json.loads(session[4])
-            
-            # 5 recept kicsomagolása
-            recipe_data = []
-            for i in range(5):
-                if i < len(recommendations):
-                    recipe_data.extend([
-                        recommendations[i]['id'],
-                        recommendations[i]['title'].replace(',', ';').replace('"', '')
-                    ])
-                else:
-                    recipe_data.extend(['', ''])
-            
-            output.write(f'{session[0]},{session[1]},{session[2]},{session[3]},{",".join(map(str, recipe_data))},{session[5]}\n')
-        
-        # Response
-        response = Response(
-            output.getvalue(),
-            mimetype='text/csv',
-            headers={'Content-Disposition': 'attachment; filename=greenrec_recommendations.csv'}
-        )
-        
-        return response
-        
-    except Exception as e:
-        logger.error(f"❌ Recommendations export hiba: {e}")
-        return f"Export hiba: {str(e)}", 500
+        return "Export hiba", 500
 
 @app.route('/export/json')
 def export_json():
-    """Teljes adatok exportálása JSON-be"""
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
+    """Teljes adatexport JSON formátumban"""
     try:
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Adatbázis kapcsolati hiba'}), 500
         
+        export_data = {}
         cur = conn.cursor()
         
         # Felhasználók
         cur.execute("""
             SELECT id, username, group_name, created_at,
-                   CASE WHEN username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
+            CASE WHEN username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
             FROM users ORDER BY created_at
         """)
-        users_data = []
-        for row in cur.fetchall():
-            users_data.append({
-                'id': row[0],
-                'username': row[1], 
-                'group_name': row[2],
-                'created_at': str(row[3]),
-                'user_type': row[4]
-            })
+        users_data = cur.fetchall()
+        export_data['users'] = [
+            {
+                'id': user[0],
+                'username': user[1], 
+                'group_name': user[2],
+                'created_at': user[3].isoformat() if user[3] else None,
+                'user_type': user[4]
+            } for user in users_data
+        ]
         
         # Választások
         cur.execute("""
-            SELECT uc.id, u.username, u.group_name, r.title, r.hsi, r.esi, r.ppi, 
-                   r.category, uc.selected_at,
-                   CASE WHEN u.username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
+            SELECT 
+                uc.id as choice_id,
+                u.username,
+                u.group_name,
+                r.title as recipe_title,
+                r.hsi, r.esi, r.ppi,
+                r.category,
+                uc.selected_at,
+                CASE WHEN u.username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
             FROM user_choices uc
             JOIN users u ON uc.user_id = u.id  
             JOIN recipes r ON uc.recipe_id = r.id
             ORDER BY uc.selected_at
         """)
-        choices_data = []
-        for row in cur.fetchall():
-            choices_data.append({
-                'choice_id': row[0],
-                'username': row[1],
-                'group_name': row[2], 
-                'recipe_title': row[3],
-                'hsi': float(row[4]),
-                'esi': float(row[5]),
-                'ppi': float(row[6]),
-                'category': row[7],
-                'selected_at': str(row[8]),
-                'user_type': row[9]
-            })
+        choices_data = cur.fetchall()
+        export_data['choices'] = [
+            {
+                'choice_id': choice[0],
+                'username': choice[1],
+                'group_name': choice[2], 
+                'recipe_title': choice[3],
+                'hsi': float(choice[4]),
+                'esi': float(choice[5]),
+                'ppi': float(choice[6]),
+                'category': choice[7],
+                'selected_at': choice[8].isoformat() if choice[8] else None,
+                'user_type': choice[9]
+            } for choice in choices_data
+        ]
         
-        # Ajánlási szeszók (ha léteznek)
+        # Ajánlási szesszók
         try:
             cur.execute("""
-                SELECT rs.id, u.username, u.group_name, rs.session_timestamp, rs.recommendations_json,
-                       CASE WHEN u.username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
+                SELECT rs.id, rs.user_id, u.username, u.group_name, 
+                       rs.session_timestamp, rs.recommended_recipe_ids, rs.recommendation_count
                 FROM recommendation_sessions rs
                 JOIN users u ON rs.user_id = u.id
                 ORDER BY rs.session_timestamp
             """)
-            recommendations_data = []
-            for row in cur.fetchall():
-                recommendations_data.append({
-                    'session_id': row[0],
-                    'username': row[1],
-                    'group_name': row[2],
-                    'session_timestamp': str(row[3]),
-                    'recommendations': json.loads(row[4]),
-                    'user_type': row[5]
-                })
+            sessions_data = cur.fetchall()
+            export_data['recommendation_sessions'] = [
+                {
+                    'session_id': session[0],
+                    'user_id': session[1],
+                    'username': session[2],
+                    'group_name': session[3],
+                    'timestamp': session[4].isoformat() if session[4] else None,
+                    'recommended_recipe_ids': session[5],
+                    'recommendation_count': session[6]
+                } for session in sessions_data
+            ]
         except:
-            recommendations_data = []
+            export_data['recommendation_sessions'] = []
         
-        # Statisztikák
-        cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name")
-        stats_users = dict(cur.fetchall())
-        
-        cur.execute("""
-            SELECT u.group_name, COUNT(uc.id) as choice_count
-            FROM users u 
-            LEFT JOIN user_choices uc ON u.id = uc.user_id
-            GROUP BY u.group_name
-        """)
-        stats_choices = dict(cur.fetchall())
+        # Receptek
+        cur.execute("SELECT id, title, hsi, esi, ppi, category FROM recipes ORDER BY id")
+        recipes_data = cur.fetchall()
+        export_data['recipes'] = [
+            {
+                'id': recipe[0],
+                'title': recipe[1],
+                'hsi': float(recipe[2]),
+                'esi': float(recipe[3]), 
+                'ppi': float(recipe[4]),
+                'category': recipe[5]
+            } for recipe in recipes_data
+        ]
         
         conn.close()
         
-        # JSON strukturálás
-        export_data = {
+        # Metaadatok
+        export_data['export_metadata'] = {
             'export_timestamp': datetime.now().isoformat(),
-            'summary': {
-                'total_users': len(users_data),
-                'total_choices': len(choices_data),
-                'total_recommendation_sessions': len(recommendations_data),
-                'users_by_group': stats_users,
-                'choices_by_group': stats_choices
-            },
-            'users': users_data,
-            'choices': choices_data,
-            'recommendation_sessions': recommendations_data
+            'total_users': len(export_data['users']),
+            'total_choices': len(export_data['choices']),
+            'total_recipes': len(export_data['recipes']),
+            'total_sessions': len(export_data['recommendation_sessions'])
         }
         
-        # JSON Response
-        response = Response(
+        return Response(
             json.dumps(export_data, indent=2, ensure_ascii=False),
             mimetype='application/json',
             headers={'Content-Disposition': 'attachment; filename=greenrec_export.json'}
         )
         
-        return response
-        
     except Exception as e:
         logger.error(f"❌ JSON export hiba: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'Export hiba'}), 500
 
+# ===== HEALTH CHECK =====
 @app.route('/health')
-def health():
-    """Health check endpoint"""
+def health_check():
+    """Alkalmazás állapot ellenőrzés"""
     try:
-        db_status = "OK" if get_db_connection() is not None else "ERROR"
-        recommender_status = "OK" if recommender is not None else "ERROR"
-        
-        return jsonify({
-            'status': 'OK',
-            'database': db_status,
-            'recommender': recommender_status,
+        conn = get_db_connection()
+        status = {
+            'status': 'healthy',
+            'database': 'connected' if conn else 'disconnected',
+            'recommender': 'active' if recommender else 'inactive',
             'timestamp': datetime.now().isoformat()
-        })
+        }
+        if conn:
+            conn.close()
+        return jsonify(status)
     except Exception as e:
         return jsonify({
-            'status': 'ERROR',
+            'status': 'unhealthy',
             'error': str(e),
             'timestamp': datetime.now().isoformat()
         }), 500
 
 # ===== ERROR HANDLERS =====
 @app.errorhandler(404)
-def not_found_error(error):
+def not_found(error):
     return render_template('404.html'), 404
 
 @app.errorhandler(500)
@@ -877,8 +868,9 @@ def internal_error(error):
 
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
+    logger.info("🚀 GreenRec alkalmazás indítása...")
     port = int(os.environ.get('PORT', 5000))
-    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    debug_mode = os.environ.get('FLASK_ENV') == 'development'
     
-    logger.info(f"🚀 GreenRec alkalmazás indítása - Port: {port}, Debug: {debug}")
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    logger.info(f"🌐 Szerver indítás port {port}, debug={debug_mode}")
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
