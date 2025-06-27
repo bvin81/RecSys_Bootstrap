@@ -1040,46 +1040,75 @@ def visualizations():
         
         cur = conn.cursor()
         
-        # JAVÍTOTT - Csoportonkénti felhasználói statisztikák a user_choices táblából
-        cur.execute("""
-            SELECT COALESCE("group", 'Unknown') as group_name, COUNT(DISTINCT username) as user_count
-            FROM user_choices 
-            GROUP BY "group"
-            ORDER BY "group"
-        """)
-        group_stats = [{'group': row[0], 'user_count': row[1]} for row in cur.fetchall()]
+        # BIZTOS MEGOLDÁS: Először nézzük meg milyen oszlopok vannak
+        cur.execute("SELECT * FROM user_choices LIMIT 1;")
+        columns = [desc[0] for desc in cur.description]
+        logger.info(f"📋 user_choices tábla oszlopai: {columns}")
         
-        # JAVÍTOTT - Választási adatok közvetlenül a user_choices táblából
-        cur.execute("""
-            SELECT 
-                COALESCE("group", 'Unknown') as group_name,
-                hsi, esi, ppi,
-                (0.4 * hsi + 0.4 * (255 - esi) + 0.2 * ppi) / 2.55 as composite_score,
-                selected_at,
-                recipe_title
-            FROM user_choices
-            ORDER BY selected_at
-        """)
+        # BIZTOS: Minden oszlopot lekérdezünk és Python-ban dolgozunk
+        cur.execute("SELECT * FROM user_choices;")
+        all_rows = cur.fetchall()
         
+        # Python-ban készítjük az adatokat
+        group_stats = {}
         choice_data = []
-        for row in cur.fetchall():
-            choice_data.append({
-                'group': row[0],
-                'hsi': row[1],
-                'esi': row[2], 
-                'ppi': row[3],
-                'composite_score': row[4],
-                'chosen_at': row[5],
-                'recipe_title': row[6]
-            })
+        
+        for row in all_rows:
+            row_dict = dict(zip(columns, row))
+            
+            # Csoport meghatározása (próbáljuk a lehetséges oszlopneveket)
+            group = None
+            for possible_group_col in ['group_name', 'group', 'test_group', 'user_group']:
+                if possible_group_col in row_dict:
+                    group = row_dict[possible_group_col] or 'Unknown'
+                    break
+            
+            if not group:
+                group = 'Unknown'
+            
+            # Felhasználónév meghatározása
+            username = None
+            for possible_user_col in ['username', 'user_name', 'name']:
+                if possible_user_col in row_dict:
+                    username = row_dict[possible_user_col]
+                    break
+            
+            # Csoportstatisztika
+            if group not in group_stats:
+                group_stats[group] = set()
+            if username:
+                group_stats[group].add(username)
+            
+            # Választási adat készítése
+            choice_record = {
+                'group': group,
+                'hsi': row_dict.get('hsi', 0),
+                'esi': row_dict.get('esi', 0),
+                'ppi': row_dict.get('ppi', 0),
+                'chosen_at': row_dict.get('selected_at') or row_dict.get('created_at') or row_dict.get('chosen_at'),
+                'recipe_title': row_dict.get('recipe_title') or row_dict.get('title') or row_dict.get('name', 'Unknown Recipe')
+            }
+            
+            # Kompozit pontszám számítása
+            choice_record['composite_score'] = (0.4 * choice_record['hsi'] + 0.4 * (255 - choice_record['esi']) + 0.2 * choice_record['ppi']) / 2.55
+            
+            choice_data.append(choice_record)
+        
+        # Csoportstatisztika formázása
+        formatted_group_stats = [
+            {'group': group, 'user_count': len(users)} 
+            for group, users in group_stats.items()
+        ]
         
         conn.close()
+        
+        logger.info(f"📊 Feldolgozott adatok: {len(choice_data)} választás, {len(formatted_group_stats)} csoport")
         
         # Vizualizációk generálása
         charts = {}
         
-        if group_stats:
-            charts['group_distribution'] = visualizer.group_distribution_chart(group_stats)
+        if formatted_group_stats:
+            charts['group_distribution'] = visualizer.group_distribution_chart(formatted_group_stats)
         
         if choice_data:
             charts['composite_analysis'] = visualizer.composite_score_analysis(choice_data)
@@ -1089,13 +1118,13 @@ def visualizations():
         return render_template('visualizations.html', 
                              charts=charts,
                              stats={'total_choices': len(choice_data),
-                                   'total_groups': len(group_stats)})
+                                   'total_groups': len(formatted_group_stats)})
         
     except Exception as e:
         logger.error(f"❌ Visualizations hiba: {e}")
         flash('Hiba történt a vizualizációk generálása során', 'error')
         return render_template('visualizations.html', charts={})
-
+        
 @app.route('/export/statistical_report')
 def export_statistical_report():
     """Részletes statisztikai jelentés exportálása JSON formátumban"""
