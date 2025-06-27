@@ -900,7 +900,7 @@ def log_recommendation_session(user_id, recommendations, user_group):
 
 @app.route('/export/metrics')
 def export_metrics():
-    """Egyszerű metrikák export"""
+    """Egyszerű metrikák export - user_group nélkül"""
     try:
         conn = get_db_connection()
         if conn is None:
@@ -908,43 +908,40 @@ def export_metrics():
         
         cur = conn.cursor()
         
-        # Ajánlási szesszók lekérdezése
+        # Ajánlási szesszók
+        cur.execute("SELECT COUNT(*) FROM recommendation_sessions")
+        total_sessions = cur.fetchone()[0]
+        
+        # Választások
+        cur.execute("SELECT COUNT(*) FROM user_choices")
+        total_choices = cur.fetchone()[0]
+        
+        # Hit rate
+        hit_rate = (total_choices / total_sessions) if total_sessions > 0 else 0
+        
+        # Utolsó 5 szesszió
         cur.execute("""
-            SELECT id, user_id, user_group, session_timestamp, recommended_recipe_ids
+            SELECT id, user_id, session_timestamp, recommended_recipe_ids
             FROM recommendation_sessions 
             ORDER BY session_timestamp DESC
+            LIMIT 5
         """)
         
         sessions = cur.fetchall()
-        
-        # Válaszás adatok
-        cur.execute("""
-            SELECT user_id, recipe_id, selected_at
-            FROM user_choices 
-            ORDER BY selected_at DESC
-        """)
-        
-        choices = cur.fetchall()
         conn.close()
         
-        # Egyszerű metrikák
-        total_sessions = len(sessions)
-        total_choices = len(choices)
-        hit_rate = (total_choices / total_sessions) if total_sessions > 0 else 0
-        
         return jsonify({
-            'message': 'Metrikák sikeresen lekérdezve',
+            'message': 'Alapvető metrikák',
             'total_sessions': total_sessions,
             'total_choices': total_choices,
             'hit_rate': round(hit_rate, 3),
-            'sessions': [
+            'recent_sessions': [
                 {
                     'id': s[0],
-                    'user_id': s[1], 
-                    'user_group': s[2],
-                    'timestamp': str(s[3]),
-                    'recipes_count': len(s[4].split(',')) if s[4] else 0
-                } for s in sessions[:10]  # Első 10 szesszió
+                    'user_id': s[1],
+                    'timestamp': str(s[2]),
+                    'recipes_count': len(s[3].split(',')) if s[3] else 0
+                } for s in sessions
             ]
         })
         
