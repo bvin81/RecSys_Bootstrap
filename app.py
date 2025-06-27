@@ -726,7 +726,7 @@ def export_choices():
 
 @app.route('/export/json')
 def export_json():
-    """JSON export az összes választási adatról - JAVÍTOTT VERZIÓ"""
+    """TELJES JSON export - többlépéses lekérdezéssel"""
     try:
         conn = get_db_connection()
         if conn is None:
@@ -734,40 +734,91 @@ def export_json():
             
         cur = conn.cursor()
         
-        # BIZTOS MEGOLDÁS: Minden oszlop lekérdezése
-        cur.execute("SELECT * FROM user_choices ORDER BY selected_at;")
-        columns = [desc[0] for desc in cur.description]
-        rows = cur.fetchall()
+        logger.info("🔍 JSON export kezdése - többlépéses lekérdezés")
         
-        logger.info(f"📋 JSON export: {len(rows)} sor, oszlopok: {columns}")
+        # 1. VÁLASZTÁSOK lekérdezése
+        cur.execute("SELECT id, user_id, recipe_id, selected_at FROM user_choices ORDER BY selected_at;")
+        choices_raw = cur.fetchall()
+        logger.info(f"📊 {len(choices_raw)} választás betöltve")
         
-        # JSON objektumok készítése
+        # 2. FELHASZNÁLÓK lekérdezése
+        cur.execute("SELECT id, username, group_name FROM users;")
+        users_raw = cur.fetchall()
+        users_dict = {user[0]: {'username': user[1], 'group_name': user[2]} for user in users_raw}
+        logger.info(f"👥 {len(users_dict)} felhasználó betöltve")
+        
+        # 3. RECEPTEK lekérdezése  
+        cur.execute("SELECT id, title, hsi, esi, ppi, category FROM recipes;")
+        recipes_raw = cur.fetchall()
+        recipes_dict = {
+            recipe[0]: {
+                'title': recipe[1], 
+                'hsi': float(recipe[2]), 
+                'esi': float(recipe[3]), 
+                'ppi': float(recipe[4]),
+                'category': recipe[5]
+            } for recipe in recipes_raw
+        }
+        logger.info(f"🍽️ {len(recipes_dict)} recept betöltve")
+        
+        # 4. TELJES ADATOK ÖSSZEÁLLÍTÁSA
         export_data = {
             'metadata': {
                 'export_timestamp': str(datetime.now()),
-                'total_records': len(rows),
-                'columns': columns
+                'total_choices': len(choices_raw),
+                'total_users': len(users_dict),
+                'total_recipes': len(recipes_dict)
             },
             'choices': []
         }
         
-        for row in rows:
-            choice_record = {}
-            for i, col in enumerate(columns):
-                value = row[i]
-                # Datetime objektumok string-gé konvertálása
-                if hasattr(value, 'isoformat'):
-                    value = value.isoformat()
-                choice_record[col] = value
+        for choice in choices_raw:
+            choice_id, user_id, recipe_id, selected_at = choice
+            
+            # Felhasználó adatok
+            user_data = users_dict.get(user_id, {'username': 'Unknown', 'group_name': 'Unknown'})
+            
+            # Recept adatok
+            recipe_data = recipes_dict.get(recipe_id, {
+                'title': 'Unknown Recipe', 
+                'hsi': 0, 'esi': 0, 'ppi': 0, 
+                'category': 'Unknown'
+            })
+            
+            # Kompozit pontszám számítása
+            hsi = recipe_data['hsi']
+            esi = recipe_data['esi'] 
+            ppi = recipe_data['ppi']
+            composite_score = (0.4 * hsi + 0.4 * (255 - esi) + 0.2 * ppi) / 2.55
+            
+            # Teljes record összeállítása
+            choice_record = {
+                'choice_id': choice_id,
+                'user_id': user_id,
+                'username': user_data['username'],
+                'group_name': user_data['group_name'],
+                'recipe_id': recipe_id,
+                'recipe_title': recipe_data['title'],
+                'category': recipe_data['category'],
+                'hsi': hsi,
+                'esi': esi,
+                'ppi': ppi,
+                'composite_score': round(composite_score, 2),
+                'good_choice': composite_score > 60,
+                'selected_at': selected_at.isoformat() if selected_at else None,
+                'user_type': 'virtual' if user_data['username'].startswith('virtual_') else 'real'
+            }
             
             export_data['choices'].append(choice_record)
         
         conn.close()
         
+        logger.info(f"✅ JSON export kész: {len(export_data['choices'])} teljes rekord")
+        
         return Response(
             json.dumps(export_data, indent=2, ensure_ascii=False),
             mimetype='application/json',
-            headers={'Content-Disposition': 'attachment; filename=greenrec_data.json'}
+            headers={'Content-Disposition': 'attachment; filename=greenrec_complete.json'}
         )
         
     except Exception as e:
