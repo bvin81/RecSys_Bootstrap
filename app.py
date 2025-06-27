@@ -1040,27 +1040,25 @@ def visualizations():
         
         cur = conn.cursor()
         
-        # Csoportonkénti felhasználói statisztikák
+        # JAVÍTOTT - Csoportonkénti felhasználói statisztikák a user_choices táblából
         cur.execute("""
-            SELECT group_name, COUNT(*) as user_count
-            FROM users 
+            SELECT COALESCE(group_name, 'Unknown') as group, COUNT(DISTINCT username) as user_count
+            FROM user_choices 
             GROUP BY group_name 
             ORDER BY group_name
         """)
         group_stats = [{'group': row[0], 'user_count': row[1]} for row in cur.fetchall()]
         
-        # Választási adatok részletes lekérése
+        # JAVÍTOTT - Választási adatok közvetlenül a user_choices táblából
         cur.execute("""
             SELECT 
-                u.group_name as group,
-                r.hsi, r.esi, r.ppi,
-                (0.4 * r.hsi + 0.4 * (255 - r.esi) + 0.2 * r.ppi) as composite_score,
-                uc.chosen_at,
-                r.title as recipe_title
-            FROM user_choices uc
-            JOIN users u ON uc.user_id = u.id
-            JOIN recipes r ON uc.recipe_id = r.id
-            ORDER BY uc.chosen_at
+                COALESCE(group_name, 'Unknown') as group,
+                hsi, esi, ppi,
+                (0.4 * hsi + 0.4 * (255 - esi) + 0.2 * ppi) / 2.55 as composite_score,
+                selected_at,
+                recipe_title
+            FROM user_choices
+            ORDER BY selected_at
         """)
         
         choice_data = []
