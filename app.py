@@ -542,9 +542,9 @@ def recommend():
             num_recommendations=5
         )
         
-        # ✅ Ajánlások logging-ja az adatbázisba
+        # ✅ KULCS: AJÁNLÁSOK TELJES LOGGING-JA
         if recommendations:
-            log_recommendations(session['user_id'], recommendations)
+            log_recommendation_session(session['user_id'], recommendations, user_group)
         
         logger.info(f"✅ {len(recommendations)} változatos ajánlás generálva user_id={session['user_id']}, group={user_group}")
         return jsonify({'recommendations': recommendations})
@@ -865,6 +865,131 @@ def not_found(error):
 @app.errorhandler(500)
 def internal_error(error):
     return render_template('500.html'), 500
+
+def log_recommendation_session(user_id, recommendations, user_group):
+    """Teljes ajánlási szesszió rögzítése a metrikákhoz"""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return
+            
+        cur = conn.cursor()
+        
+        # Recept ID-k és pozíciók
+        recipe_ids = [str(rec['id']) for rec in recommendations]
+        recipe_positions = {str(rec['id']): i+1 for i, rec in enumerate(recommendations)}
+        
+        # Session rögzítése
+        cur.execute("""
+            INSERT INTO recommendation_sessions 
+            (user_id, recommended_recipe_ids, recipe_positions, user_group)
+            VALUES (%s, %s, %s, %s)
+        """, (
+            user_id, 
+            ','.join(recipe_ids),
+            json.dumps(recipe_positions),
+            user_group
+        ))
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"✅ Recommendation session logged: user={user_id}, recipes={recipe_ids}")
+        
+    except Exception as e:
+        logger.error(f"❌ Recommendation logging hiba: {e}")
+
+@app.route('/export/metrics')
+def export_metrics():
+    """Precision@K, Recall@K, MRR metrikák számítása és export"""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return jsonify({'error': 'Adatbázis kapcsolati hiba'}), 500
+        
+        # Ajánlások és választások összekapcsolása
+        query = """
+        SELECT 
+            rs.id as session_id,
+            rs.user_id,
+            rs.recommended_recipe_ids,
+            rs.user_group,
+            rs.session_timestamp,
+            uc.recipe_id as chosen_recipe_id,
+            r.hsi, r.esi, r.ppi, r.title
+        FROM recommendation_sessions rs
+        LEFT JOIN user_choices uc ON rs.user_id = uc.user_id 
+            AND uc.selected_at > rs.session_timestamp 
+            AND uc.selected_at < rs.session_timestamp + INTERVAL '30 minutes'
+        LEFT JOIN recipes r ON uc.recipe_id = r.id
+        ORDER BY rs.session_timestamp
+        """
+        
+        cur = conn.cursor()
+        cur.execute(query)
+        rows = cur.fetchall()
+        conn.close()
+        
+        if len(rows) == 0:
+            return jsonify({'message': 'Nincs ajánlási adat még', 'data': []}), 200
+        
+        # Metrikák számítása
+        metrics_data = []
+        for row in rows:
+            session_id, user_id, recommended_ids_str, user_group, session_time, chosen_id, hsi, esi, ppi, title = row
+            
+            recommended_ids = recommended_ids_str.split(',')
+            chosen_id_str = str(int(chosen_id)) if chosen_id else None
+            
+            # Metrikák számítása
+            precision_at_5 = 1 if chosen_id_str and chosen_id_str in recommended_ids[:5] else 0
+            precision_at_3 = 1 if chosen_id_str and chosen_id_str in recommended_ids[:3] else 0
+            precision_at_1 = 1 if chosen_id_str and chosen_id_str == recommended_ids[0] else 0
+            
+            mrr = 0
+            if chosen_id_str and chosen_id_str in recommended_ids:
+                position = recommended_ids.index(chosen_id_str) + 1
+                mrr = 1.0 / position
+            
+            hit_rate = 1 if chosen_id_str else 0
+            
+            composite_score = None
+            if chosen_id:
+                composite_score = 0.4 * hsi + 0.4 * (100 - esi) + 0.2 * ppi
+            
+            metrics_data.append({
+                'session_id': session_id,
+                'user_id': user_id,
+                'user_group': user_group,
+                'precision_at_1': precision_at_1,
+                'precision_at_3': precision_at_3,
+                'precision_at_5': precision_at_5,
+                'mrr': mrr,
+                'hit_rate': hit_rate,
+                'composite_score': composite_score
+            })
+        
+        # Export formátum
+        export_format = request.args.get('format', 'json')
+        
+        if export_format == 'csv':
+            import pandas as pd
+            df = pd.DataFrame(metrics_data)
+            csv_content = df.to_csv(index=False)
+            return Response(
+                csv_content,
+                mimetype='text/csv',
+                headers={'Content-Disposition': 'attachment; filename=greenrec_metrics.csv'}
+            )
+        else:
+            return jsonify({
+                'metrics': metrics_data,
+                'total_sessions': len(metrics_data),
+                'export_timestamp': datetime.now().isoformat()
+            })
+        
+    except Exception as e:
+        logger.error(f"❌ Metrikák export hiba: {e}")
+        return jsonify({'error': 'Export hiba'}), 500
 
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
