@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>📊 Vizualizációs Dashboard - GreenRec</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .viz-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+            backdrop-filter: blur(4px);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        
+        .chart-container {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 15px 0;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .chart-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+        
+        .loading-spinner {
+            display: none;
+            text-align: center;
+            padding: 40px;
+        }
+        
+        .stats-highlight {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin: 10px 0;
+            text-align: center;
+        }
+        
+        .export-section {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+        
+        .chart-nav {
+            background: #e9ecef;
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .nav-pills .nav-link.active {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+        }
+        
+        .methodology-box {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <!-- Navigáció -->
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="/">🏠 Főoldal</a></li>
+                <li class="breadcrumb-item"><a href="/stats">📊 Statisztikák</a></li>
+                <li class="breadcrumb-item active">📈 Vizualizációk</li>
+            </ol>
+        </nav>
+
+        <!-- Főcím és összefoglaló -->
+        <div class="viz-card">
+            <div class="row align-items-center">
+                <div class="col-md-8">
+                    <h1 class="mb-3">📊 GreenRec Vizualizációs Dashboard</h1>
+                    <p class="lead">
+                        Interaktív grafikonok és statisztikai elemzések a fenntarthatósági 
+                        ajánlórendszer A/B/C tesztjének eredményeihez
+                    </p>
+                    <div class="methodology-box">
+                        <strong>🔬 Felhasznált módszertan:</strong>
+                        <ul class="mb-0 mt-2">
+                            <li><strong>matplotlib</strong> - Alapvető grafikonok és hisztogramok</li>
+                            <li><strong>seaborn</strong> - Statisztikai vizualizációk (boxplot, violin plot)</li>
+                            <li><strong>scipy</strong> - Statisztikai tesztek (Kruskal-Wallis, t-teszt)</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    {% if stats %}
+                    <div class="stats-highlight">
+                        <h3>{{ stats.total_choices or 0 }}</h3>
+                        <p class="mb-1">Összes választás</p>
+                        <small>{{ stats.total_groups or 0 }} aktív tesztcsoport</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Chart Navigation -->
+        <div class="chart-nav">
+            <ul class="nav nav-pills justify-content-center" id="chartTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="distribution-tab" data-bs-toggle="pill" 
+                            data-bs-target="#distribution" type="button" role="tab">
+                        👥 Csoporteloszlás
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="composite-tab" data-bs-toggle="pill" 
+                            data-bs-target="#composite" type="button" role="tab">
+                        📈 Kompozit Elemzés
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="breakdown-tab" data-bs-toggle="pill" 
+                            data-bs-target="#breakdown" type="button" role="tab">
+                        🔍 HSI/ESI/PPI Részletek
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="timeline-tab" data-bs-toggle="pill" 
+                            data-bs-target="#timeline" type="button" role="tab">
+                        ⏰ Időbeli Trendek
+                    </button>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Chart Content -->
+        <div class="tab-content" id="chartTabsContent">
+            
+            <!-- 1. Csoporteloszlás -->
+            <div class="tab-pane fade show active" id="distribution" role="tabpanel">
+                <div class="viz-card">
+                    <h3>👥 A/B/C Tesztcsoportok Felhasználói Eloszlása</h3>
+                    <p class="text-muted">
+                        A randomizált csoportbeosztás eredményei. Az egyenletes eloszlás biztosítja 
+                        a tesztek validitását.
+                    </p>
+                    
+                    {% if charts and charts.group_distribution %}
+                    <div class="chart-container">
+                        <img src="{{ charts.group_distribution }}" alt="Csoporteloszlás" class="chart-image">
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i> 
+                        Nincs elegendő adat a csoporteloszlás megjelenítéséhez.
+                    </div>
+                    {% endif %}
+                    
+                    <div class="methodology-box">
+                        <strong>📊 Módszertan:</strong> Oszlopdiagram és kördiagram matplotlib használatával. 
+                        A randomizáció sikerességét vizuálisan is ellenőrizhetjük.
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. Kompozit Elemzés -->
+            <div class="tab-pane fade" id="composite" role="tabpanel">
+                <div class="viz-card">
+                    <h3>📈 Kompozit Pontszámok Statisztikai Elemzése</h3>
+                    <p class="text-muted">
+                        A fenntarthatósági kompozit pontszámok (HSI + ESI + PPI) eloszlása és 
+                        összehasonlítása a tesztcsoportok között scipy statisztikai tesztekkel.
+                    </p>
+                    
+                    {% if charts and charts.composite_analysis %}
+                    <div class="chart-container">
+                        <img src="{{ charts.composite_analysis }}" alt="Kompozit Elemzés" class="chart-image">
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        Nincs elegendő választási adat a kompozit elemzéshez.
+                    </div>
+                    {% endif %}
+                    
+                    <div class="methodology-box">
+                        <strong>🔬 Statisztikai módszerek:</strong>
+                        <ul class="mb-0">
+                            <li><strong>Boxplot</strong> - Medián, kvartilisek és outlier-ek megjelenítése</li>
+                            <li><strong>Violin plot</strong> - Teljes eloszlás sűrűségfüggvénye</li>
+                            <li><strong>Kruskal-Wallis teszt</strong> - Nem-parametrikus ANOVA (p < 0.05 szignifikáns)</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 3. HSI/ESI/PPI Részletek -->
+            <div class="tab-pane fade" id="breakdown" role="tabpanel">
+                <div class="viz-card">
+                    <h3>🔍 HSI/ESI/PPI Pontszámok Részletes Bontása</h3>
+                    <p class="text-muted">
+                        Az egyes fenntarthatósági dimenziók (egészség, környezet, népszerűség) 
+                        külön elemzése és korrelációs vizsgálat.
+                    </p>
+                    
+                    {% if charts and charts.hsi_esi_ppi_breakdown %}
+                    <div class="chart-container">
+                        <img src="{{ charts.hsi_esi_ppi_breakdown }}" alt="HSI/ESI/PPI Bontás" class="chart-image">
+                    </div>
+                    {% else %}
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i> 
+                        Nincs elegendő adat a részletes bontáshoz.
+                    </div>
+                    {% endif %}
+                    
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="methodology-box">
+                                <strong>🍃 HSI (Health Score Index):</strong><br>
+                                Egészségességi pontszám (0-100)<br>
+                                <em>Magasabb = egészségesebb</em>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="methodology-box">
+                                <strong>🌍 ESI (Environmental Score Index):</strong><br>
+                                Környezeti hatás pontszám (0-255)<br>
+                                <em>Alacsonyabb = környezetbarátabb</em>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="methodology-box">
+                                <strong>⭐ PPI (Popularity Score Index):</strong><br>
+                                Népszerűségi pontszám (0-100)<br>
+                                <em>Magasabb = népszerűbb</em>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. Időbeli Trendek -->
+            <div class="tab-pane fade" id="timeline" role="tabpanel">
+                <div class="viz-card">
+                    <h3>⏰ Választási Minták Időbeli Elemzése</h3>
+                    <p class="text-muted">
+                        A felhasználói választások időbeli mintázatai és a kompozit pontszámok 
+                        trendjei a tesztelési folyamat során.
+                    </p>
+                    
+                    {% if charts and charts.timeline_analysis %}
+                    <div class="chart-container">
+                        <img src="{{ charts.timeline_analysis }}" alt="Időbeli Trendek" class="chart-image">
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-clock"></i> 
+                        Nincs elegendő időbeli adat a trend elemzéshez.
+                    </div>
+                    {% endif %}
+                    
+                    <div class="methodology-box">
+                        <strong>📈 Időbeli elemzés:</strong> Mozgóátlag számítás (rolling average) 
+                        és hourly activity pattern. A trendek változásai jelezhetik a tanulási hatást.
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Section -->
+        <div class="export-section">
+            <h3 class="mb-4">📁 Adatok és Jelentések Exportálása</h3>
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>📊 Vizuális Exportok:</h5>
+                    <p class="text-muted">Grafikonok letöltése és megosztása</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button onclick="downloadChart('group_distribution')" class="btn btn-outline-primary">
+                            👥 Csoporteloszlás PNG
+                        </button>
+                        <button onclick="downloadChart('composite_analysis')" class="btn btn-outline-success">
+                            📈 Kompozit Elemzés PNG
+                        </button>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <h5>📋 Statisztikai Jelentések:</h5>
+                    <p class="text-muted">Részletes adatok és számítások</p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="/export/statistical_report" class="btn btn-warning" target="_blank">
+                            🔬 Teljes Statisztikai Jelentés JSON
+                        </a>
+                        <a href="/export/choices" class="btn btn-info">
+                            📋 Nyers Adatok CSV
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="alert alert-success mt-3">
+                <h6 class="alert-heading">💡 Tipp a kutatóknak:</h6>
+                <p class="mb-1">
+                    <strong>JSON jelentés:</strong> Tartalmazza az összes scipy statisztikai teszt eredményét, 
+                    leíró statisztikákat és p-értékeket.<br>
+                    <strong>CSV export:</strong> Nyers adatok további elemzéshez R, SPSS vagy Python pandas-szal.
+                </p>
+            </div>
+        </div>
+
+        <!-- Vissza navigáció -->
+        <div class="text-center">
+            <a href="/stats" class="btn btn-secondary btn-lg">
+                ← Vissza a Statisztikákhoz
+            </a>
+            <a href="/" class="btn btn-success btn-lg">
+                🏠 Főoldal
+            </a>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-3">Grafikon generálása folyamatban...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Chart download functionality
+        function downloadChart(chartType) {
+            const modal = new bootstrap.Modal(document.getElementById('loadingModal'));
+            modal.show();
+            
+            fetch(`/charts/${chartType}`)
+                .then(response => response.json())
+                .then(data => {
+                    modal.hide();
+                    if (data.chart) {
+                        // Base64 image download
+                        const link = document.createElement('a');
+                        link.href = data.chart;
+                        link.download = `greenrec_${chartType}_${new Date().toISOString().split('T')[0]}.png`;
+                        link.click();
+                    } else {
+                        alert('Hiba a grafikon generálása során');
+                    }
+                })
+                .catch(error => {
+                    modal.hide();
+                    alert('Hiba: ' + error.message);
+                });
+        }
+        
+        // Auto-refresh functionality (optional)
+        function refreshCharts() {
+            if (confirm('Frissítsük a grafikonokat a legfrissebb adatokkal?')) {
+                location.reload();
+            }
+        }
+        
+        // Tab change analytics (optional)
+        document.querySelectorAll('[data-bs-toggle="pill"]').forEach(tab => {
+            tab.addEventListener('shown.bs.tab', function(e) {
+                console.log('Tab switched to:', e.target.id);
+                // Itt lehetne analytics event küldeni
+            });
+        });
+        
+        // Tooltip initialization for methodology boxes
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    </script>
+</body>
+</html>
