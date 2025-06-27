@@ -1,243 +1,324 @@
-<!DOCTYPE html>
-<html lang="hu">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Statisztikák - GreenRec</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-        }
-        .navbar {
-            background: rgba(255, 255, 255, 0.95) !important;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
-        }
-        .stats-card {
-            border: none;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-            margin-bottom: 2rem;
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(10px);
-        }
-        .export-btn {
-            border-radius: 25px;
-            padding: 12px 25px;
-            font-weight: 600;
-            margin: 0.5rem;
-            transition: all 0.3s ease;
-        }
-        .export-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        }
-        .btn-csv {
-            background: linear-gradient(135deg, #28a745, #20c997);
-            border: none;
-            color: white;
-        }
-        .btn-json {
-            background: linear-gradient(135deg, #007bff, #6610f2);
-            border: none;
-            color: white;
-        }
-        .stat-number {
-            font-size: 2.5rem;
-            font-weight: bold;
-            color: #28a745;
-        }
-        .stat-label {
-            font-size: 1.1rem;
-            color: #6c757d;
-            font-weight: 500;
-        }
-    </style>
-</head>
-<body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-light">
-        <div class="container">
-            <a class="navbar-brand fw-bold text-success" href="{{ url_for('index') }}">🌱 GreenRec</a>
-            <div class="navbar-nav ms-auto">
-                <a class="nav-link" href="{{ url_for('index') }}">Főoldal</a>
-                <a class="nav-link text-danger" href="{{ url_for('logout') }}">Kilépés</a>
-            </div>
-        </div>
+{% extends "base.html" %}
+
+{% block title %}Statisztikák - GreenRec{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <!-- Breadcrumb Navigation -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="/">🏠 Főoldal</a></li>
+            <li class="breadcrumb-item active">📊 Statisztikák</li>
+        </ol>
     </nav>
 
-    <div class="container mt-4">
-        <!-- Page Header -->
-        <div class="row">
-            <div class="col-12">
-                <div class="stats-card">
-                    <div class="card-body text-center">
-                        <h1 class="card-title">📊 Tesztelési Statisztikák</h1>
-                        <p class="card-text text-muted">A/B/C teszt jelenlegi állása</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Export Buttons -->
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="stats-card">
-                    <div class="card-body text-center">
-                        <h3 class="card-title mb-4">📁 Adatok Exportálása</h3>
-                        <p class="text-muted mb-4">Töltsd le a kutatási adatokat további elemzéshez</p>
-                        
-                        <div class="d-flex flex-wrap justify-content-center">
-                            <a href="{{ url_for('export_users') }}" class="btn export-btn btn-csv">
-                                📋 Felhasználók CSV
-                            </a>
-                            <a href="{{ url_for('export_choices') }}" class="btn export-btn btn-csv">
-                                🎯 Választások CSV
-                            </a>
-                            <a href="{{ url_for('export_json') }}" class="btn export-btn btn-json">
-                                📦 Teljes Export JSON
+    <!-- Page Header with Visualization Link -->
+    <div class="row">
+        <div class="col-12">
+            <div class="stats-card">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h1 class="card-title">📊 Tesztelési Statisztikák</h1>
+                            <p class="card-text text-muted">A/B/C teszt jelenlegi állása és eredmények</p>
+                        </div>
+                        <div class="col-md-4 text-end">
+                            <a href="/visualizations" class="btn btn-primary btn-lg">
+                                📈 Interaktív Vizualizációk
                             </a>
                         </div>
-                        
-                        <div class="mt-3">
-                            <small class="text-muted">
-                                <strong>CSV:</strong> Excel-ben megnyitható táblázat formátum<br>
-                                <strong>JSON:</strong> Strukturált adatformátum programozáshoz
-                            </small>
-                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
-
-        <!-- Statistics -->
-        <div class="row">
-            <!-- Users by Group -->
-            <div class="col-md-6">
-                <div class="stats-card">
-                    <div class="card-body">
-                        <h5 class="card-title">👥 Felhasználók csoportonként</h5>
-                        
-                        {% if stats.user_groups %}
-                            <div class="table-responsive">
-                                <table class="table table-hover">
-                                    <thead>
-                                        <tr>
-                                            <th>Csoport</th>
-                                            <th>Felhasználók száma</th>
-                                            <th>Leírás</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for group, count in stats.user_groups.items() %}
-                                        <tr>
-                                            <td>
-                                                <span class="badge bg-{{ 'primary' if group == 'A' else 'success' if group == 'B' else 'warning' }}">
-                                                    {{ group }} csoport
-                                                </span>
-                                            </td>
-                                            <td><span class="stat-number">{{ count }}</span></td>
-                                            <td class="text-muted">
-                                                {% if group == 'A' %}
-                                                    Kontroll (pontszámok nélkül)
-                                                {% elif group == 'B' %}
-                                                    Pontszámokkal
-                                                {% else %}
-                                                    Pontszámok + magyarázat
-                                                {% endif %}
-                                            </td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        {% else %}
-                            <div class="text-center text-muted py-4">
-                                <p>Még nincs elegendő adat a megjelenítéshez.</p>
-                            </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-
-            <!-- Overall Stats -->
-            <div class="col-md-6">
-                <div class="stats-card">
-                    <div class="card-body">
-                        <h5 class="card-title">📈 Összesített adatok</h5>
-                        
-                        <div class="row text-center">
-                            <div class="col-6">
-                                <div class="stat-number">{{ stats.total_users or 0 }}</div>
-                                <div class="stat-label">Összes felhasználó</div>
-                            </div>
-                            <div class="col-6">
-                                <div class="stat-number">{{ stats.total_recipes or 0 }}</div>
-                                <div class="stat-label">Elérhető receptek</div>
-                            </div>
-                        </div>
-                        
-                        {% if stats.total_choices is defined %}
-                        <div class="row text-center mt-4">
-                            <div class="col-12">
-                                <div class="stat-number">{{ stats.total_choices or 0 }}</div>
-                                <div class="stat-label">Összes választás</div>
-                            </div>
-                        </div>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Research Hypothesis -->
-        <div class="row">
-            <div class="col-12">
-                <div class="stats-card">
-                    <div class="card-body">
-                        <h5 class="card-title">🔬 Kutatási hipotézis</h5>
-                        <div class="alert alert-info">
-                            <strong>Hipotézis:</strong> A <strong>C csoport</strong> (pontszámok + magyarázat) választásainak átlagos kompozit pontszáma lesz a legmagasabb, 
-                            majd a <strong>B csoport</strong> (csak pontszámok), végül az <strong>A csoport</strong> (kontroll).
-                        </div>
-                        
-                        <div class="row mt-4">
-                            <div class="col-md-4">
-                                <div class="text-center p-3 border rounded">
-                                    <h6>A Csoport (Kontroll)</h6>
-                                    <p class="text-muted">Alapvető recept információk, pontszámok nélkül</p>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="text-center p-3 border rounded">
-                                    <h6>B Csoport</h6>
-                                    <p class="text-muted">Receptek + HSI/ESI/PPI pontszámok megjelenítése</p>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="text-center p-3 border rounded">
-                                    <h6>C Csoport</h6>
-                                    <p class="text-muted">Receptek + pontszámok + XAI magyarázat</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Back to Main -->
-        <div class="row">
-            <div class="col-12 text-center">
-                <a href="{{ url_for('index') }}" class="btn btn-success btn-lg">
-                    🏠 Vissza a főoldalra
-                </a>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+    <!-- Enhanced Export Buttons -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="stats-card">
+                <div class="card-body">
+                    <h3 class="card-title mb-4">📁 Adatok és Vizualizációk Exportálása</h3>
+                    <p class="text-muted mb-4">Töltsd le a kutatási adatokat és grafikus eredményeket további elemzéshez</p>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>📋 Alapadatok:</h5>
+                            <div class="d-flex flex-wrap gap-2 mb-3">
+                                <a href="{{ url_for('export_users') }}" class="btn export-btn btn-csv">
+                                    👥 Felhasználók CSV
+                                </a>
+                                <a href="{{ url_for('export_choices') }}" class="btn export-btn btn-csv">
+                                    🎯 Választások CSV
+                                </a>
+                                <a href="{{ url_for('export_json') }}" class="btn export-btn btn-json">
+                                    📦 Teljes Export JSON
+                                </a>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>📊 Fejlett Analitika:</h5>
+                            <div class="d-flex flex-wrap gap-2 mb-3">
+                                <a href="/visualizations" class="btn btn-primary">
+                                    📈 Interaktív Dashboard
+                                </a>
+                                <a href="/export/statistical_report" class="btn btn-warning" target="_blank">
+                                    🔬 Statisztikai Jelentés
+                                </a>
+                                <a href="/metrics/dashboard" class="btn btn-info">
+                                    📊 Metrikák Dashboard
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info mt-3">
+                        <h6 class="alert-heading">🆕 Új funkciók:</h6>
+                        <ul class="mb-0">
+                            <li><strong>Matplotlib grafikonok:</strong> Csoporteloszlás és kompozit pontszám elemzések</li>
+                            <li><strong>Seaborn vizualizációk:</strong> Boxplot, violin plot és korrelációs heatmap</li>
+                            <li><strong>Scipy statisztikák:</strong> Kruskal-Wallis teszt és páronkénti összehasonlítások</li>
+                        </ul>
+                    </div>
+                    
+                    <div class="mt-3">
+                        <small class="text-muted">
+                            <strong>CSV:</strong> Excel-ben megnyitható táblázat formátum<br>
+                            <strong>JSON:</strong> Strukturált adatformátum programozáshoz<br>
+                            <strong>Vizualizációk:</strong> matplotlib/seaborn alapú interaktív grafikonok
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Cards -->
+    <div class="row">
+        <!-- Users by Group -->
+        <div class="col-md-6">
+            <div class="stats-card">
+                <div class="card-body">
+                    <h5 class="card-title">👥 Felhasználók csoportonként</h5>
+                    
+                    {% if group_stats %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>Csoport</th>
+                                        <th>Felhasználók</th>
+                                        <th>Arány</th>
+                                        <th>Leírás</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for stat in group_stats %}
+                                    <tr>
+                                        <td><span class="badge bg-primary">{{ stat.group }}</span></td>
+                                        <td><strong>{{ stat.user_count }}</strong></td>
+                                        <td>{{ "%.1f"|format(stat.percentage) }}%</td>
+                                        <td class="small text-muted">
+                                            {% if stat.group == 'A' %}Kontroll (alapvető info)
+                                            {% elif stat.group == 'B' %}HSI/ESI/PPI pontszámok
+                                            {% elif stat.group == 'C' %}Pontszámok + magyarázat
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <a href="/visualizations#distribution" class="btn btn-outline-primary btn-sm">
+                                📊 Csoporteloszlás Vizualizáció →
+                            </a>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <p>Még nincs elegendő adat a megjelenítéshez.</p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Overall Stats Enhanced -->
+        <div class="col-md-6">
+            <div class="stats-card">
+                <div class="card-body">
+                    <h5 class="card-title">📈 Összesített adatok</h5>
+                    
+                    <div class="row text-center">
+                        <div class="col-6">
+                            <div class="stat-number">{{ stats.total_users or 0 }}</div>
+                            <div class="stat-label">Összes felhasználó</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-number">{{ stats.total_recipes or 0 }}</div>
+                            <div class="stat-label">Elérhető receptek</div>
+                        </div>
+                    </div>
+                    
+                    {% if stats.total_choices is defined %}
+                    <div class="row text-center mt-4">
+                        <div class="col-6">
+                            <div class="stat-number">{{ stats.total_choices or 0 }}</div>
+                            <div class="stat-label">Összes választás</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="stat-number">{{ stats.avg_composite_score or 0 }}</div>
+                            <div class="stat-label">Átlag kompozit pontszám</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mt-3">
+                        <a href="/visualizations#composite" class="btn btn-outline-success btn-sm">
+                            📈 Kompozit Elemzés →
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Enhanced Research Hypothesis Section -->
+    <div class="row">
+        <div class="col-12">
+            <div class="stats-card">
+                <div class="card-body">
+                    <h5 class="card-title">🔬 Kutatási hipotézis és metodológia</h5>
+                    
+                    <div class="row">
+                        <div class="col-md-8">
+                            <div class="alert alert-info">
+                                <strong>Hipotézis:</strong> A <strong>C csoport</strong> (pontszámok + magyarázat) választásainak átlagos kompozit pontszáma lesz a legmagasabb, 
+                                majd a <strong>B csoport</strong> (csak pontszámok), végül az <strong>A csoport</strong> (kontroll).
+                            </div>
+                            
+                            <h6>📊 Alkalmazott statisztikai módszerek:</h6>
+                            <ul class="small">
+                                <li><strong>matplotlib:</strong> Alapvető grafikonok (oszlop-, kör-, vonaldiagramok)</li>
+                                <li><strong>seaborn:</strong> Statisztikai vizualizációk (boxplot, violin plot, heatmap)</li>
+                                <li><strong>scipy:</strong> Statisztikai tesztek (Kruskal-Wallis, t-teszt, korreláció)</li>
+                                <li><strong>pandas:</strong> Adatok aggregálása és leíró statisztikák</li>
+                            </ul>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center">
+                                <a href="/visualizations" class="btn btn-success btn-lg">
+                                    🔬 Statisztikai Vizualizációk
+                                </a>
+                                <p class="small text-muted mt-2">
+                                    Interaktív grafikonok<br>
+                                    scipy tesztekkel
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Methodology Enhancement -->
+    <div class="row">
+        <div class="col-12">
+            <div class="stats-card">
+                <div class="card-body">
+                    <h5 class="card-title">🧪 Tesztcsoportok részletesen</h5>
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="text-center p-3 border rounded">
+                                <h6 class="text-danger">A Csoport (Kontroll)</h6>
+                                <p class="text-muted small">Alapvető recept információk, pontszámok nélkül</p>
+                                <span class="badge bg-danger">Baseline</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center p-3 border rounded">
+                                <h6 class="text-info">B Csoport</h6>
+                                <p class="text-muted small">Receptek + HSI/ESI/PPI pontszámok megjelenítése</p>
+                                <span class="badge bg-info">Quantified</span>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-center p-3 border rounded">
+                                <h6 class="text-primary">C Csoport</h6>
+                                <p class="text-muted small">Receptek + pontszámok + XAI magyarázat</p>
+                                <span class="badge bg-primary">Explained</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-4 text-center">
+                        <a href="/visualizations#breakdown" class="btn btn-outline-primary">
+                            🔍 HSI/ESI/PPI Részletes Elemzés →
+                        </a>
+                        <a href="/visualizations#timeline" class="btn btn-outline-secondary">
+                            ⏰ Időbeli Trendek →
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Back to Main -->
+    <div class="row">
+        <div class="col-12 text-center">
+            <a href="{{ url_for('index') }}" class="btn btn-success btn-lg">
+                🏠 Vissza a főoldalra
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .stats-card {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        border: none;
+        border-radius: 15px;
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.37);
+        backdrop-filter: blur(4px);
+        margin-bottom: 20px;
+    }
+    
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #667eea;
+    }
+    
+    .stat-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin-top: 5px;
+    }
+    
+    .export-btn {
+        margin: 2px;
+        border-radius: 20px;
+    }
+    
+    .btn-csv {
+        background: linear-gradient(45deg, #28a745, #20c997);
+        color: white;
+        border: none;
+    }
+    
+    .btn-json {
+        background: linear-gradient(45deg, #ffc107, #fd7e14);
+        color: white;
+        border: none;
+    }
+    
+    .btn-csv:hover, .btn-json:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        color: white;
+    }
+</style>
+{% endblock %}
