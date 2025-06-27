@@ -789,7 +789,7 @@ def export_json():
             hsi = recipe_data['hsi']
             esi = recipe_data['esi'] 
             ppi = recipe_data['ppi']
-            composite_score = (0.4 * hsi + 0.4 * (255 - esi) + 0.2 * ppi) / 2.55
+            composite_score = (0.4 * hsi + 0.4 * (100 - esi) + 0.2 * ppi) / 2.55
             
             # Teljes record összeállítása
             choice_record = {
@@ -1072,7 +1072,7 @@ def visualizations():
             }
             
             # Kompozit pontszám számítása
-            choice_record['composite_score'] = (0.4 * choice_record['hsi'] + 0.4 * (255 - choice_record['esi']) + 0.2 * choice_record['ppi']) / 2.55
+            choice_record['composite_score'] = (0.4 * choice_record['hsi'] + 0.4 * (100 - choice_record['esi']) + 0.2 * choice_record['ppi']) / 2.55
             
             choice_data.append(choice_record)
         
@@ -1125,7 +1125,7 @@ def export_statistical_report():
             SELECT 
                 u.group_name as group,
                 r.hsi, r.esi, r.ppi,
-                (0.4 * r.hsi + 0.4 * (255 - r.esi) + 0.2 * r.ppi) as composite_score,
+                (0.4 * r.hsi + 0.4 * (100 - r.esi) + 0.2 * r.ppi) as composite_score,
                 uc.chosen_at
             FROM user_choices uc
             JOIN users u ON uc.user_id = u.id
@@ -1187,7 +1187,7 @@ def generate_chart(chart_type):
             cur = conn.cursor()
             cur.execute("""
                 SELECT u.group_name, r.hsi, r.esi, r.ppi,
-                       (0.4 * r.hsi + 0.4 * (255 - r.esi) + 0.2 * r.ppi) as composite_score,
+                       (0.4 * r.hsi + 0.4 * (100 - r.esi) + 0.2 * r.ppi) as composite_score,
                        uc.chosen_at
                 FROM user_choices uc
                 JOIN users u ON uc.user_id = u.id
