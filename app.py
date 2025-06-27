@@ -1200,6 +1200,38 @@ def generate_chart(chart_type):
         logger.error(f"❌ Chart generation hiba: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/debug/table_structure')
+def debug_table_structure():
+    """Debug endpoint a tábla struktúra ellenőrzéséhez"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Oszlopok lekérdezése
+        cur.execute("SELECT * FROM user_choices LIMIT 1;")
+        columns = [desc[0] for desc in cur.description]
+        
+        # Minta adatok
+        cur.execute("SELECT * FROM user_choices LIMIT 3;")
+        sample_rows = cur.fetchall()
+        
+        result = {
+            'columns': columns,
+            'sample_data': [dict(zip(columns, row)) for row in sample_rows],
+            'total_rows': None
+        }
+        
+        # Összes sor számolása
+        cur.execute("SELECT COUNT(*) FROM user_choices;")
+        result['total_rows'] = cur.fetchone()[0]
+        
+        conn.close()
+        
+        return f"<pre>{result}</pre>"
+        
+    except Exception as e:
+        return f"<pre>HIBA: {e}</pre>"
+
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
     logger.info("🚀 GreenRec alkalmazás indítása...")
