@@ -1042,17 +1042,17 @@ def visualizations():
         
         # JAVÍTOTT - Csoportonkénti felhasználói statisztikák a user_choices táblából
         cur.execute("""
-            SELECT COALESCE(group_name, 'Unknown') as group, COUNT(DISTINCT username) as user_count
+            SELECT COALESCE("group", 'Unknown') as group_name, COUNT(DISTINCT username) as user_count
             FROM user_choices 
-            GROUP BY group_name 
-            ORDER BY group_name
+            GROUP BY "group"
+            ORDER BY "group"
         """)
         group_stats = [{'group': row[0], 'user_count': row[1]} for row in cur.fetchall()]
         
         # JAVÍTOTT - Választási adatok közvetlenül a user_choices táblából
         cur.execute("""
             SELECT 
-                COALESCE(group_name, 'Unknown') as group,
+                COALESCE("group", 'Unknown') as group_name,
                 hsi, esi, ppi,
                 (0.4 * hsi + 0.4 * (255 - esi) + 0.2 * ppi) / 2.55 as composite_score,
                 selected_at,
