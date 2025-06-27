@@ -726,122 +726,53 @@ def export_choices():
 
 @app.route('/export/json')
 def export_json():
-    """Teljes adatexport JSON formátumban"""
+    """JSON export az összes választási adatról - JAVÍTOTT VERZIÓ"""
     try:
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Adatbázis kapcsolati hiba'}), 500
-        
-        export_data = {}
+            
         cur = conn.cursor()
         
-        # Felhasználók
-        cur.execute("""
-            SELECT id, username, group_name, created_at,
-            CASE WHEN username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
-            FROM users ORDER BY created_at
-        """)
-        users_data = cur.fetchall()
-        export_data['users'] = [
-            {
-                'id': user[0],
-                'username': user[1], 
-                'group_name': user[2],
-                'created_at': user[3].isoformat() if user[3] else None,
-                'user_type': user[4]
-            } for user in users_data
-        ]
+        # BIZTOS MEGOLDÁS: Minden oszlop lekérdezése
+        cur.execute("SELECT * FROM user_choices ORDER BY selected_at;")
+        columns = [desc[0] for desc in cur.description]
+        rows = cur.fetchall()
         
-        # Választások
-        cur.execute("""
-            SELECT 
-                uc.id as choice_id,
-                u.username,
-                u.group_name,
-                r.title as recipe_title,
-                r.hsi, r.esi, r.ppi,
-                r.category,
-                uc.selected_at,
-                CASE WHEN u.username LIKE 'user_%' THEN 'teszt' ELSE 'valós' END as user_type
-            FROM user_choices uc
-            JOIN users u ON uc.user_id = u.id  
-            JOIN recipes r ON uc.recipe_id = r.id
-            ORDER BY uc.selected_at
-        """)
-        choices_data = cur.fetchall()
-        export_data['choices'] = [
-            {
-                'choice_id': choice[0],
-                'username': choice[1],
-                'group_name': choice[2], 
-                'recipe_title': choice[3],
-                'hsi': float(choice[4]),
-                'esi': float(choice[5]),
-                'ppi': float(choice[6]),
-                'category': choice[7],
-                'selected_at': choice[8].isoformat() if choice[8] else None,
-                'user_type': choice[9]
-            } for choice in choices_data
-        ]
+        logger.info(f"📋 JSON export: {len(rows)} sor, oszlopok: {columns}")
         
-        # Ajánlási szesszók
-        try:
-            cur.execute("""
-                SELECT rs.id, rs.user_id, u.username, u.group_name, 
-                       rs.session_timestamp, rs.recommended_recipe_ids, rs.recommendation_count
-                FROM recommendation_sessions rs
-                JOIN users u ON rs.user_id = u.id
-                ORDER BY rs.session_timestamp
-            """)
-            sessions_data = cur.fetchall()
-            export_data['recommendation_sessions'] = [
-                {
-                    'session_id': session[0],
-                    'user_id': session[1],
-                    'username': session[2],
-                    'group_name': session[3],
-                    'timestamp': session[4].isoformat() if session[4] else None,
-                    'recommended_recipe_ids': session[5],
-                    'recommendation_count': session[6]
-                } for session in sessions_data
-            ]
-        except:
-            export_data['recommendation_sessions'] = []
+        # JSON objektumok készítése
+        export_data = {
+            'metadata': {
+                'export_timestamp': str(datetime.now()),
+                'total_records': len(rows),
+                'columns': columns
+            },
+            'choices': []
+        }
         
-        # Receptek
-        cur.execute("SELECT id, title, hsi, esi, ppi, category FROM recipes ORDER BY id")
-        recipes_data = cur.fetchall()
-        export_data['recipes'] = [
-            {
-                'id': recipe[0],
-                'title': recipe[1],
-                'hsi': float(recipe[2]),
-                'esi': float(recipe[3]), 
-                'ppi': float(recipe[4]),
-                'category': recipe[5]
-            } for recipe in recipes_data
-        ]
+        for row in rows:
+            choice_record = {}
+            for i, col in enumerate(columns):
+                value = row[i]
+                # Datetime objektumok string-gé konvertálása
+                if hasattr(value, 'isoformat'):
+                    value = value.isoformat()
+                choice_record[col] = value
+            
+            export_data['choices'].append(choice_record)
         
         conn.close()
-        
-        # Metaadatok
-        export_data['export_metadata'] = {
-            'export_timestamp': datetime.now().isoformat(),
-            'total_users': len(export_data['users']),
-            'total_choices': len(export_data['choices']),
-            'total_recipes': len(export_data['recipes']),
-            'total_sessions': len(export_data['recommendation_sessions'])
-        }
         
         return Response(
             json.dumps(export_data, indent=2, ensure_ascii=False),
             mimetype='application/json',
-            headers={'Content-Disposition': 'attachment; filename=greenrec_export.json'}
+            headers={'Content-Disposition': 'attachment; filename=greenrec_data.json'}
         )
         
     except Exception as e:
         logger.error(f"❌ JSON export hiba: {e}")
-        return jsonify({'error': 'Export hiba'}), 500
+        return jsonify({'error': f'Export hiba: {str(e)}'}), 500
 
 # ===== HEALTH CHECK =====
 @app.route('/health')
