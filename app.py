@@ -900,96 +900,56 @@ def log_recommendation_session(user_id, recommendations, user_group):
 
 @app.route('/export/metrics')
 def export_metrics():
-    """Precision@K, Recall@K, MRR metrikák számítása és export"""
+    """Egyszerű metrikák export"""
     try:
         conn = get_db_connection()
         if conn is None:
             return jsonify({'error': 'Adatbázis kapcsolati hiba'}), 500
         
-        # Ajánlások és választások összekapcsolása
-        query = """
-        SELECT 
-            rs.id as session_id,
-            rs.user_id,
-            rs.recommended_recipe_ids,
-            rs.user_group,
-            rs.session_timestamp,
-            uc.recipe_id as chosen_recipe_id,
-            r.hsi, r.esi, r.ppi, r.title
-        FROM recommendation_sessions rs
-        LEFT JOIN user_choices uc ON rs.user_id = uc.user_id 
-            AND uc.selected_at > rs.session_timestamp 
-            AND uc.selected_at < rs.session_timestamp + INTERVAL '30 minutes'
-        LEFT JOIN recipes r ON uc.recipe_id = r.id
-        ORDER BY rs.session_timestamp
-        """
-        
         cur = conn.cursor()
-        cur.execute(query)
-        rows = cur.fetchall()
+        
+        # Ajánlási szesszók lekérdezése
+        cur.execute("""
+            SELECT id, user_id, user_group, session_timestamp, recommended_recipe_ids
+            FROM recommendation_sessions 
+            ORDER BY session_timestamp DESC
+        """)
+        
+        sessions = cur.fetchall()
+        
+        # Válaszás adatok
+        cur.execute("""
+            SELECT user_id, recipe_id, selected_at
+            FROM user_choices 
+            ORDER BY selected_at DESC
+        """)
+        
+        choices = cur.fetchall()
         conn.close()
         
-        if len(rows) == 0:
-            return jsonify({'message': 'Nincs ajánlási adat még', 'data': []}), 200
+        # Egyszerű metrikák
+        total_sessions = len(sessions)
+        total_choices = len(choices)
+        hit_rate = (total_choices / total_sessions) if total_sessions > 0 else 0
         
-        # Metrikák számítása
-        metrics_data = []
-        for row in rows:
-            session_id, user_id, recommended_ids_str, user_group, session_time, chosen_id, hsi, esi, ppi, title = row
-            
-            recommended_ids = recommended_ids_str.split(',')
-            chosen_id_str = str(int(chosen_id)) if chosen_id else None
-            
-            # Metrikák számítása
-            precision_at_5 = 1 if chosen_id_str and chosen_id_str in recommended_ids[:5] else 0
-            precision_at_3 = 1 if chosen_id_str and chosen_id_str in recommended_ids[:3] else 0
-            precision_at_1 = 1 if chosen_id_str and chosen_id_str == recommended_ids[0] else 0
-            
-            mrr = 0
-            if chosen_id_str and chosen_id_str in recommended_ids:
-                position = recommended_ids.index(chosen_id_str) + 1
-                mrr = 1.0 / position
-            
-            hit_rate = 1 if chosen_id_str else 0
-            
-            composite_score = None
-            if chosen_id:
-                composite_score = 0.4 * hsi + 0.4 * (100 - esi) + 0.2 * ppi
-            
-            metrics_data.append({
-                'session_id': session_id,
-                'user_id': user_id,
-                'user_group': user_group,
-                'precision_at_1': precision_at_1,
-                'precision_at_3': precision_at_3,
-                'precision_at_5': precision_at_5,
-                'mrr': mrr,
-                'hit_rate': hit_rate,
-                'composite_score': composite_score
-            })
-        
-        # Export formátum
-        export_format = request.args.get('format', 'json')
-        
-        if export_format == 'csv':
-            import pandas as pd
-            df = pd.DataFrame(metrics_data)
-            csv_content = df.to_csv(index=False)
-            return Response(
-                csv_content,
-                mimetype='text/csv',
-                headers={'Content-Disposition': 'attachment; filename=greenrec_metrics.csv'}
-            )
-        else:
-            return jsonify({
-                'metrics': metrics_data,
-                'total_sessions': len(metrics_data),
-                'export_timestamp': datetime.now().isoformat()
-            })
+        return jsonify({
+            'message': 'Metrikák sikeresen lekérdezve',
+            'total_sessions': total_sessions,
+            'total_choices': total_choices,
+            'hit_rate': round(hit_rate, 3),
+            'sessions': [
+                {
+                    'id': s[0],
+                    'user_id': s[1], 
+                    'user_group': s[2],
+                    'timestamp': str(s[3]),
+                    'recipes_count': len(s[4].split(',')) if s[4] else 0
+                } for s in sessions[:10]  # Első 10 szesszió
+            ]
+        })
         
     except Exception as e:
-        logger.error(f"❌ Metrikák export hiba: {e}")
-        return jsonify({'error': 'Export hiba'}), 500
+        return jsonify({'error': f'Hiba: {str(e)}'}), 500
 
 # Add hozzá ezt a route-ot az app.py-ba (az /export/metrics után):
 
