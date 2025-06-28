@@ -785,8 +785,6 @@ def stats():
             stats['total_recipes'] = cur.fetchone()[0]
         except:
             stats['total_recipes'] = 0
-        
-        # ===== TEMPLATE FIX - BESZÚRT RÉSZ ↓ =====
         # Total users számítása
         stats['total_users'] = sum(stats['users_by_group'].values())
         
@@ -799,8 +797,31 @@ def stats():
             }
             for group, count in stats['users_by_group'].items()
         ]
-        # ===== TEMPLATE FIX VÉGE ↑ =====
         
+        # Átlag kompozit pontszám számítása (user_choices + recipes JOIN)
+        try:
+            cur.execute("""
+                SELECT AVG(
+                    0.4 * r.hsi + 
+                    0.4 * (100 - r.esi * 100.0 / 255.0) + 
+                    0.2 * r.ppi
+                ) as avg_composite
+                FROM user_choices uc
+                JOIN recipes r ON uc.recipe_id = r.id
+                WHERE r.hsi IS NOT NULL 
+                AND r.esi IS NOT NULL 
+                AND r.ppi IS NOT NULL
+            """)
+            
+            result = cur.fetchone()
+            if result and result[0] is not None:
+                stats['avg_composite_score'] = round(float(result[0]), 1)
+            else:
+                stats['avg_composite_score'] = 0.0
+                
+        except Exception as e:
+            logger.error(f"❌ Kompozit pontszám számítási hiba: {e}")
+            stats['avg_composite_score'] = 0.0     
         conn.close()
         return render_template('stats.html', stats=stats)
         
