@@ -1391,6 +1391,52 @@ def debug_table_structure():
     except Exception as e:
         return f"<pre>HIBA: {e}</pre>"
 
+# Add hozzá az app.py VÉGÉRE (nem módosít meglévő kódot):
+@app.route('/debug/stats_data')
+def debug_stats_data():
+    """CSAK diagnosztika - nem módosít semmit"""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return "❌ DB kapcsolat sikertelen"
+        
+        cur = conn.cursor()
+        
+        # 1. Users tábla ellenőrzés
+        cur.execute("SELECT COUNT(*) FROM users;")
+        total_users = cur.fetchone()[0]
+        
+        # 2. Users csoportonként
+        cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name;")
+        users_by_group = dict(cur.fetchall())
+        
+        # 3. Choices ellenőrzés
+        cur.execute("SELECT COUNT(*) FROM user_choices;")
+        total_choices = cur.fetchone()[0]
+        
+        # 4. Session ellenőrzés
+        session_info = {
+            'logged_in': 'user_id' in session,
+            'user_id': session.get('user_id'),
+            'username': session.get('username'),
+            'user_group': session.get('user_group')
+        }
+        
+        conn.close()
+        
+        result = {
+            'total_users': total_users,
+            'users_by_group': users_by_group,
+            'total_choices': total_choices,
+            'session': session_info,
+            'timestamp': str(datetime.now())
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, ensure_ascii=False)}</pre>"
+        
+    except Exception as e:
+        return f"❌ HIBA: {e}"
+
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
     logger.info("🚀 GreenRec alkalmazás indítása...")
