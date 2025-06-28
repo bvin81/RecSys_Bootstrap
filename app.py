@@ -1437,6 +1437,159 @@ def debug_stats_data():
     except Exception as e:
         return f"❌ HIBA: {e}"
 
+@app.route('/debug/stats_template')
+def debug_stats_template():
+    """Stats template debug - pontosan mit kap a template"""
+    if 'user_id' not in session:
+        return "<h2>❌ Nincs bejelentkezve - <a href='/login'>Bejelentkezés</a></h2>"
+    
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return "<h2>❌ DB kapcsolat sikertelen</h2>"
+        
+        cur = conn.cursor()
+        
+        # ===== PONTOS REPRODUKÁLÁS a stats route logikájának =====
+        stats = {}
+        
+        # 1. Users by group (ahogy a stats route csinálja)
+        try:
+            cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name ORDER BY group_name")
+            stats['users_by_group'] = dict(cur.fetchall())
+        except:
+            stats['users_by_group'] = {'A': 0, 'B': 0, 'C': 0}
+        
+        # 2. Total choices
+        try:
+            cur.execute("SELECT COUNT(*) FROM user_choices")
+            stats['total_choices'] = cur.fetchone()[0]
+        except:
+            stats['total_choices'] = 0
+        
+        # 3. Total recipes
+        try:
+            cur.execute("SELECT COUNT(*) FROM recipes")
+            stats['total_recipes'] = cur.fetchone()[0]
+        except:
+            stats['total_recipes'] = 0
+        
+        # 4. HIÁNYZÓ: Total users (ezt nem csinálja a stats route!)
+        try:
+            cur.execute("SELECT COUNT(*) FROM users")
+            stats['total_users'] = cur.fetchone()[0]
+        except:
+            stats['total_users'] = 0
+        
+        conn.close()
+        
+        # ===== TEMPLATE ÁLTAL VÁRT ADATOK GENERÁLÁSA =====
+        # A stats.html ezt várja: group_stats lista
+        group_stats = []
+        total_users = stats.get('total_users', 1)  # 0-val osztás elkerülése
+        
+        for group, count in stats['users_by_group'].items():
+            group_stats.append({
+                'group': group,
+                'user_count': count,
+                'percentage': round(count / total_users * 100, 1) if total_users > 0 else 0
+            })
+        
+        # ===== DEBUG KIMENET HTML FORMÁTUMBAN =====
+        html_output = f"""
+        <h1>🔍 Stats Template Debug Report</h1>
+        
+        <h2>📊 1. APP.PY STATS ROUTE által küldött adatok:</h2>
+        <pre style="background: #f8f9fa; padding: 15px; border: 1px solid #ddd;">
+{json.dumps(stats, indent=2, ensure_ascii=False)}
+        </pre>
+        
+        <h2>📋 2. TEMPLATE (stats.html) által VÁRT adatok:</h2>
+        <pre style="background: #e8f5e8; padding: 15px; border: 1px solid #28a745;">
+{{
+  "stats": {stats},
+  "group_stats": {group_stats}
+}}
+        </pre>
+        
+        <h2>🎯 3. PROBLÉMA AZONOSÍTÁS:</h2>
+        <div style="background: #fff3cd; padding: 15px; border: 1px solid #ffeaa7; margin: 10px 0;">
+            <strong>A template {% if group_stats %} blokkot keres, de az app.py NEM küldi a 'group_stats' változót!</strong>
+            <br><br>
+            <strong>Jelenlegi stats route küldi:</strong> stats['users_by_group'] = dict<br>
+            <strong>Template vár:</strong> group_stats = lista objektumokkal
+        </div>
+        
+        <h2>📈 4. VIZUÁLIS ÖSSZEHASONLÍTÁS:</h2>
+        <table border="1" style="border-collapse: collapse; width: 100%; margin: 10px 0;">
+            <tr style="background: #007bff; color: white;">
+                <th style="padding: 10px;">Csoport</th>
+                <th style="padding: 10px;">Felhasználók száma</th>
+                <th style="padding: 10px;">Százalék</th>
+                <th style="padding: 10px;">Státusz</th>
+            </tr>
+        """
+        
+        for group_data in group_stats:
+            html_output += f"""
+            <tr>
+                <td style="padding: 8px; text-align: center;"><strong>{group_data['group']}</strong></td>
+                <td style="padding: 8px; text-align: center;">{group_data['user_count']}</td>
+                <td style="padding: 8px; text-align: center;">{group_data['percentage']}%</td>
+                <td style="padding: 8px; text-align: center;">
+                    {'✅ Adat OK' if group_data['user_count'] > 0 else '❌ Nincs adat'}
+                </td>
+            </tr>
+            """
+        
+        html_output += f"""
+        </table>
+        
+        <h2>🛠️ 5. JAVASOLT MEGOLDÁSOK:</h2>
+        <div style="background: #d4edda; padding: 15px; border: 1px solid #c3e6cb; margin: 10px 0;">
+            <h3>Opció A: App.py stats route kiegészítése (AJÁNLOTT)</h3>
+            <pre style="background: white; padding: 10px; border: 1px solid #ddd;">
+# Add hozzá a stats route végére, a return előtt:
+stats['total_users'] = sum(stats['users_by_group'].values())
+stats['group_stats'] = [
+    {{
+        'group': group, 
+        'user_count': count,
+        'percentage': round(count/stats['total_users']*100, 1)
+    }}
+    for group, count in stats['users_by_group'].items()
+]
+            </pre>
+            
+            <h3>Opció B: Template módosítása</h3>
+            <pre style="background: white; padding: 10px; border: 1px solid #ddd;">
+# stats.html-ben:
+# Cseréld {% if group_stats %} → {% if stats.users_by_group %}
+# És {% for stat in group_stats %} → {% for group, count in stats.users_by_group.items() %}
+            </pre>
+        </div>
+        
+        <h2>🔗 6. HASZNOS LINKEK:</h2>
+        <ul>
+            <li><a href="/stats">🔙 Vissza a Stats oldalra</a></li>
+            <li><a href="/debug/stats_data">📊 Alapvető stats debug</a></li>
+            <li><a href="/debug/database">🗄️ Database debug</a></li>
+        </ul>
+        
+        <div style="background: #f8d7da; padding: 15px; border: 1px solid #f5c6cb; margin: 20px 0;">
+            <strong>⚠️ KÖVETKEZŐ LÉPÉS:</strong><br>
+            Ha ez a debug egyértelműen mutatja a problémát, akkor választhatsz a megoldások közül!
+        </div>
+        """
+        
+        return html_output
+        
+    except Exception as e:
+        return f"""
+        <h2>❌ Debug Template Hiba</h2>
+        <pre style="color: red;">{e}</pre>
+        <p><a href="/stats">🔙 Vissza a Stats oldalra</a></p>
+        """
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
     logger.info("🚀 GreenRec alkalmazás indítása...")
