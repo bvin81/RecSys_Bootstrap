@@ -1473,6 +1473,46 @@ def debug_stats_data():
     except Exception as e:
         return f"❌ HIBA: {e}"
 
+@app.route('/debug/group_stats')
+def debug_group_stats():
+    """Debug a group_stats generálását"""
+    if 'user_id' not in session:
+        return "<h2>Nincs bejelentkezve</h2>"
+    
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Ugyanaz mint a stats route
+        cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name ORDER BY group_name")
+        users_by_group = dict(cur.fetchall())
+        
+        total_users = sum(users_by_group.values())
+        
+        # Group stats generálás
+        group_stats = [
+            {
+                'group': group,
+                'user_count': count,
+                'percentage': round(count / total_users * 100, 1) if total_users > 0 else 0
+            }
+            for group, count in users_by_group.items()
+        ]
+        
+        conn.close()
+        
+        result = {
+            'users_by_group': users_by_group,
+            'total_users': total_users,
+            'group_stats': group_stats,
+            'group_stats_empty': not bool(group_stats),
+            'template_condition': bool(group_stats)
+        }
+        
+        return f"<pre>{json.dumps(result, indent=2, ensure_ascii=False)}</pre>"
+        
+    except Exception as e:
+        return f"<h2>Hiba: {e}</h2>"
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
     logger.info("🚀 GreenRec alkalmazás indítása...")
