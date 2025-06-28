@@ -15,8 +15,6 @@
             backdrop-filter: blur(10px);
             box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
         }
-        
-        /* ===== STRUKTURÁLT KÁRTYÁK ===== */
         .recipe-card {
             border: none;
             border-radius: 15px;
@@ -24,75 +22,17 @@
             transition: all 0.3s ease;
             margin-bottom: 2rem;
             overflow: hidden;
-            background: rgba(255, 255, 255, 0.95) !important;
-            backdrop-filter: blur(10px);
         }
         .recipe-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
         }
-        
-        .card {
-            background: rgba(255, 255, 255, 0.95) !important;
-        }
-        
-        .card-body {
-            background: white !important;
-            color: #333 !important;
-            padding: 1.5rem !important;
-            line-height: 1.6;
-        }
-        
         .recipe-image {
             width: 100%;
             height: 200px;
             object-fit: cover;
             background: #f8f9fa;
         }
-        
-        /* ===== KÁRTYA TARTALOM STRUKTÚRA ===== */
-        .card-title {
-            font-size: 1.1rem;
-            font-weight: 600;
-            color: #333 !important;
-            margin-bottom: 1rem !important;
-            padding-bottom: 0.5rem;
-            border-bottom: 2px solid #f8f9fa;
-            line-height: 1.3;
-        }
-        
-        .card-text {
-            color: #555 !important;
-            margin-bottom: 1rem !important;
-        }
-        
-        .card-text strong {
-            color: #28a745 !important;
-            font-weight: 600;
-        }
-        
-        /* Elkészítés details elem */
-        details {
-            margin-top: 1rem !important;
-            padding: 0.5rem 0;
-            border-top: 1px solid #e9ecef;
-        }
-        
-        summary {
-            cursor: pointer;
-            font-weight: 600;
-            color: #28a745 !important;
-            margin-bottom: 0.5rem;
-        }
-        
-        details p {
-            margin-top: 0.5rem;
-            padding-left: 1rem;
-            color: #666 !important;
-            font-style: italic;
-        }
-        
-        /* ===== SZÍNKÓDOLT BADGE-EK ===== */
         .score-badge {
             border-radius: 15px;
             padding: 6px 12px;
@@ -105,13 +45,10 @@
             transition: all 0.3s ease;
             border: 2px solid rgba(255, 255, 255, 0.3);
         }
-
         .score-badge:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.25);
         }
-
-        /* Dinamikus színkódolás */
         .score-badge.bg-success {
             background: linear-gradient(135deg, rgba(40, 167, 69, 0.9), rgba(32, 201, 151, 0.9)) !important;
             color: white !important;
@@ -124,8 +61,6 @@
             background: linear-gradient(135deg, rgba(220, 53, 69, 0.9), rgba(231, 76, 60, 0.9)) !important;
             color: white !important;
         }
-
-        /* Fallback régi színek */
         .hsi-badge { 
             background: rgba(40, 167, 69, 0.9); 
             color: white; 
@@ -141,28 +76,6 @@
             color: black; 
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
-        
-        /* ===== KATEGÓRIA ÉS ELRENDEZÉS ===== */
-        .category-badge {
-            background: #6c757d;
-            color: white;
-            border-radius: 15px;
-            padding: 4px 10px;
-            font-size: 0.75rem;
-            margin-bottom: 0.5rem;
-            display: inline-block;
-        }
-        
-        /* Badge-ek és kategória közötti tér */
-        .d-flex.gap-2 {
-            margin: 0.5rem 0 !important;
-        }
-        
-        /* ===== GOMBOK ===== */
-        .btn {
-            margin-top: 1rem !important;
-        }
-        
         .btn-recommend {
             background: linear-gradient(135deg, #28a745, #20c997);
             border: none;
@@ -194,8 +107,13 @@
             color: white;
             background: linear-gradient(135deg, #0056b3, #520dc2);
         }
-        
-        /* ===== EGYÉB ELEMEK ===== */
+        .category-badge {
+            background: #6c757d;
+            color: white;
+            border-radius: 15px;
+            padding: 3px 8px;
+            font-size: 0.7rem;
+        }
         .loading {
             display: none;
             text-align: center;
@@ -208,50 +126,25 @@
             margin: 1rem 0;
             border-radius: 5px;
         }
-
-       .explanation {
-            background: #e7f3ff;
-            border-left: 4px solid #0066cc;
-            padding: 1rem;
-            margin: 1rem 0;
-            border-radius: 5px;
-        }
-        
-        /* ===== KOMPONENS HÁTTEREK ===== */
-        /* Cím háttere */
         .card-title {
-            background: rgba(248, 249, 250, 0.6) !important;
-            padding: 1rem 1.5rem 0.8rem 1.5rem !important;
-            margin: 0 0 0.5rem 0 !important;
-            border-radius: 8px;
+            background: #f0f0f0;
+            padding: 15px;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            line-height: 1.3;
         }
-
-        /* Badge-ek háttere */
-        .d-flex.gap-2 {
-            background: rgba(233, 236, 239, 0.4) !important;
-            padding: 0.8rem 1.5rem !important;
-            margin: 0.5rem 0 !important;
-            border-radius: 8px;
-        }
-
-        /* Összetevők háttere */
         .card-text {
-            background: rgba(248, 249, 250, 0.6) !important;
-            padding: 1rem 1.5rem !important;
-            margin: 0.5rem 0 !important;
-            border-radius: 8px;
+            background: #f8f8f8;
+            padding: 15px;
+            margin-bottom: 10px;
+            color: #555;
         }
-
-        /* Elkészítés háttere */
         details {
-            background: rgba(233, 236, 239, 0.4) !important;
-            padding: 1rem 1.5rem !important;
-            margin: 0.5rem 0 !important;
-            border-radius: 8px;
-            border-top: none !important;
+            background: #f0f0f0;
+            padding: 15px;
         }
-       
-    </style>
     </style>
 </head>
 <body>
