@@ -252,15 +252,27 @@
                                         <!-- Pontszámok a kategória mellett -->
                                         ${userGroup !== 'A' ? `
                                             <div class="d-flex gap-2">
-                                                <span class="score-badge hsi-badge" title="Egészségességi mutató" style="position: relative; top: 0; right: 0;">
-                                                    ❤️ ${recipe.hsi}
-                                                </span>
-                                                <span class="score-badge esi-badge" title="Környezeti hatás" style="position: relative; top: 0; right: 0;">
-                                                    🌍 ${recipe.esi}
-                                                </span>
-                                                <span class="score-badge ppi-badge" title="Népszerűségi mutató" style="position: relative; top: 0; right: 0;">
-                                                    ⭐ ${recipe.ppi}
-                                                </span>
+                                                <div class="badge bg-${recipe.hsi_color} score-badge-large" 
+                                                     title="${recipe.hsi_tooltip}" 
+                                                     data-bs-toggle="tooltip">
+                                                    <div class="score-icon">❤️</div>
+                                                    <div class="score-label">Egészség</div>
+                                                    <div class="score-value">${recipe.hsi}</div>
+                                                </div>
+                                                <div class="badge bg-${recipe.esi_color} score-badge-large" 
+                                                     title="${recipe.esi_tooltip}" 
+                                                     data-bs-toggle="tooltip">
+                                                    <div class="score-icon">🌍</div>
+                                                    <div class="score-label">Környezet</div>
+                                                    <div class="score-value">${recipe.esi}</div>
+                                                </div>
+                                                <div class="badge bg-${recipe.ppi_color} score-badge-large" 
+                                                     title="${recipe.ppi_tooltip}" 
+                                                     data-bs-toggle="tooltip">
+                                                    <div class="score-icon">⭐</div>
+                                                    <div class="score-label">Népszerűség</div>
+                                                    <div class="score-value">${recipe.ppi}</div>
+                                                </div>
                                             </div>
                                         ` : ''}
                                     </div>
