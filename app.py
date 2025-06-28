@@ -786,6 +786,21 @@ def stats():
         except:
             stats['total_recipes'] = 0
         
+        # ===== TEMPLATE FIX - BESZÚRT RÉSZ ↓ =====
+        # Total users számítása
+        stats['total_users'] = sum(stats['users_by_group'].values())
+        
+        # Template által várt group_stats lista generálása
+        stats['group_stats'] = [
+            {
+                'group': group,
+                'user_count': count,
+                'percentage': round(count / stats['total_users'] * 100, 1) if stats['total_users'] > 0 else 0
+            }
+            for group, count in stats['users_by_group'].items()
+        ]
+        # ===== TEMPLATE FIX VÉGE ↑ =====
+        
         conn.close()
         return render_template('stats.html', stats=stats)
         
