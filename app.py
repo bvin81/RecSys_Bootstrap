@@ -623,7 +623,7 @@ def logout():
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
-    """🎯 HIBRID AJAX ajánlások endpoint - Content-based + Score-based"""
+    """🎯 HIBRID AJAX ajánlások endpoint - JAVÍTOTT JSON kezelés"""
     if 'user_id' not in session:
         return jsonify({'error': 'Nincs bejelentkezve'}), 401
     
@@ -631,17 +631,32 @@ def recommend():
         if recommender is None:
             return jsonify({'error': 'Ajánlórendszer nem elérhető'}), 500
         
-        # Felhasználói input (opcionális ingredients)
-        request_data = request.get_json() if request.is_json else {}
-        target_ingredients = request_data.get('ingredients', '')
+        # JAVÍTOTT JSON kezelés - több módon próbáljuk
+        target_ingredients = ''
+        try:
+            # Első próbálkozás: JSON request
+            if request.is_json and request.get_json():
+                request_data = request.get_json()
+                target_ingredients = request_data.get('ingredients', '')
+        except Exception as json_error:
+            logger.warning(f"⚠️ JSON parsing hiba: {json_error}")
+            # Második próbálkozás: form data
+            try:
+                target_ingredients = request.form.get('ingredients', '')
+            except Exception as form_error:
+                logger.warning(f"⚠️ Form parsing hiba: {form_error}")
+                # Harmadik próbálkozás: üres ingredients
+                target_ingredients = ''
         
         # Felhasználói csoport és preferenciák
         user_group = session.get('user_group', 'A')
         user_preferences = {
             'group': user_group,
             'user_id': session['user_id'],
-            'ingredients': target_ingredients  # ÚJ: Content-based input
+            'ingredients': target_ingredients  # Content-based input
         }
+        
+        logger.info(f"🔍 Ajánlás kérés: user={session['user_id']}, group={user_group}, ingredients='{target_ingredients}'")
         
         # 🚀 HIBRID ajánlások generálása
         recommendations = recommender.get_personalized_recommendations(
@@ -649,6 +664,11 @@ def recommend():
             user_preferences=user_preferences,
             num_recommendations=5
         )
+        
+        # Ellenőrzés hogy van-e eredmény
+        if not recommendations:
+            logger.warning("⚠️ Nincs ajánlás eredmény")
+            return jsonify({'error': 'Nem sikerült ajánlásokat generálni'}), 500
         
         # ✨ SZÍNKÓDOLÁS hozzáadása minden recepthez
         for rec in recommendations:
@@ -661,7 +681,7 @@ def recommend():
             rec['esi_tooltip'] = f"Környezeti hatás: {rec['esi']:.1f} (alacsonyabb = jobb)"
             rec['ppi_tooltip'] = f"Népszerűségi mutató: {rec['ppi']:.1f} (magasabb = jobb)"
             
-            # ÚJ: Hibrid info hozzáadása
+            # Hibrid info hozzáadása
             if rec.get('similarity_score', 0) > 0:
                 rec['is_hybrid'] = True
                 rec['hybrid_tooltip'] = f"Hibrid pontszám: {rec.get('hybrid_score', 0):.3f} (50% hasonlóság + 50% minőség)"
@@ -683,6 +703,8 @@ def recommend():
         
     except Exception as e:
         logger.error(f"❌ Hibrid ajánlási endpoint hiba: {e}")
+        import traceback
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
         return jsonify({'error': 'Hiba az ajánlások generálásakor'}), 500
 
 @app.route('/select_recipe', methods=['POST'])
