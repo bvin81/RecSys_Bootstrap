@@ -48,18 +48,58 @@
             backdrop-filter: blur(10px);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
         }
-       /* Bootstrap színek dinamikus használata */
-        .score-badge-large.bg-success {
-            background: rgba(40, 167, 69, 0.9) !important;
-        }
-        .score-badge-large.bg-warning {
-            background: rgba(255, 193, 7, 0.9) !important;
-            color: black !important;
-        }
-        .score-badge-large.bg-danger {
-            background: rgba(220, 53, 69, 0.9) !important;
+        
+        /* ===== NAGY SZÍNKÓDOLT BADGE-EK ===== */
+        .score-badge-large {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16px 24px;
+            border-radius: 20px;
+            min-width: 110px;
+            min-height: 75px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+            border: 3px solid rgba(255,255,255,0.4);
+            backdrop-filter: blur(10px);
+            transition: all 0.4s ease;
+            cursor: help;
+            text-decoration: none !important;
+            margin: 3px;
         }
 
+        .score-badge-large:hover {
+            transform: translateY(-4px) scale(1.05);
+            box-shadow: 0 12px 32px rgba(0,0,0,0.25);
+        }
+
+        .score-icon {
+            font-size: 1.8rem;
+            margin-bottom: 8px;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+        }
+
+        .score-value {
+            font-size: 1.4rem;
+            font-weight: 800;
+            line-height: 1;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+        }
+
+        /* Bootstrap színkódolás override */
+        .score-badge-large.bg-success {
+            background: linear-gradient(135deg, rgba(40, 167, 69, 0.9), rgba(32, 201, 151, 0.9)) !important;
+            color: white !important;
+        }
+        .score-badge-large.bg-warning {
+            background: linear-gradient(135deg, rgba(255, 193, 7, 0.9), rgba(255, 159, 67, 0.9)) !important;
+            color: #333 !important;
+        }
+        .score-badge-large.bg-danger {
+            background: linear-gradient(135deg, rgba(220, 53, 69, 0.9), rgba(231, 76, 60, 0.9)) !important;
+            color: white !important;
+        }
+        
+        /* ===== RÉGI KIS BADGE-EK (fallback) ===== */
         .hsi-badge { 
             background: rgba(40, 167, 69, 0.9); 
             color: white; 
@@ -75,6 +115,7 @@
             color: black; 
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
+        
         .btn-recommend {
             background: linear-gradient(135deg, #28a745, #20c997);
             border: none;
