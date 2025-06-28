@@ -9,7 +9,28 @@ from flask import Flask, request, render_template, redirect, url_for, session, f
 # Logging beállítása
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+def get_score_color(score, score_type):
+    """
+    Pontszám alapján színkódolás
+    score_type: 'hsi', 'esi', 'ppi'
+    """
+    if score_type == 'hsi' or score_type == 'ppi':
+        # HSI és PPI: magasabb = jobb
+        if score >= 75:
+            return 'success'  # Zöld
+        elif score >= 50:
+            return 'warning'  # Sárga
+        else:
+            return 'danger'   # Piros
+    
+    elif score_type == 'esi':
+        # ESI: alacsonyabb = jobb (normalizált 0-100 skála)
+        if score <= 33:      # Alacsony környezeti hatás
+            return 'success'  # Zöld
+        elif score <= 66:    # Közepes környezeti hatás
+            return 'warning'  # Sárga
+        else:                # Magas környezeti hatás
+            return 'danger'   # Piros
 try:
     import psycopg2
     from psycopg2 import sql
@@ -555,6 +576,16 @@ def recommend():
             log_recommendation_session(session['user_id'], recommendations, user_group)
         
         logger.info(f"✅ {len(recommendations)} változatos ajánlás generálva user_id={session['user_id']}, group={user_group}")
+          # ✨ SZÍNKÓDOLÁS hozzáadása minden recepthez
+        for rec in recommendations:
+            rec['hsi_color'] = get_score_color(rec['hsi'], 'hsi')
+            rec['esi_color'] = get_score_color(rec['esi'], 'esi')
+            rec['ppi_color'] = get_score_color(rec['ppi'], 'ppi')
+            
+            # Tooltip szövegek
+            rec['hsi_tooltip'] = f"Egészségességi mutató: {rec['hsi']:.1f} (magasabb = jobb)"
+            rec['esi_tooltip'] = f"Környezeti hatás: {rec['esi']:.1f} (alacsonyabb = jobb)"
+            rec['ppi_tooltip'] = f"Népszerűségi mutató: {rec['ppi']:.1f} (magasabb = jobb)"
         return jsonify({'recommendations': recommendations})
         
     except Exception as e:
