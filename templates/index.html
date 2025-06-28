@@ -41,6 +41,7 @@
             backdrop-filter: blur(10px);
             box-shadow: 0 3px 10px rgba(0, 0, 0, 0.15);
             margin: 2px;
+            margin-left: -18px;
             cursor: help;
             transition: all 0.3s ease;
             border: 2px solid rgba(255, 255, 255, 0.3);
@@ -169,13 +170,26 @@
                     </h4>
                     <p>Nézd meg, mit főzhetsz ma! Kattints, és válassz a 5 recept közül!</p>
                     
-                    {% if user_group == 'C' %}
+                    {% if user_group == 'B' or user_group == 'C' %}
                         <div class="explanation">
-                            <strong>ℹ️ Pontszámok magyarázata:</strong><br>
-                            <strong>❤️ HSI (Health Score):</strong> Egészségességi mutató - magasabb érték egészségesebb ételt jelent<br>
-                            <strong>🌍 ESI (Environmental Score):</strong> Környezeti hatás - alacsonyabb érték környezetbarátabb<br>
-                            <strong>⭐ PPI (Popularity Score):</strong> Népszerűségi mutató - magasabb érték népszerűbb receptet jelent
-                        </div>
+                            <div class="row">
+                                <!-- Pontszámok magyarázata -->
+                                <div class="col-md-8">
+                                    <strong>ℹ️ Pontszámok magyarázata:</strong><br>
+                                    <strong>❤️ HSI (Health Score):</strong> Egészségességi mutató - magasabb érték egészségesebb ételt jelent<br>
+                                    <strong>🌍 ESI (Environmental Score):</strong> Környezeti hatás - alacsonyabb érték környezetbarátabb<br>
+                                    <strong>⭐ PPI (Popularity Score):</strong> Népszerűségi mutató - magasabb érték népszerűbb receptet jelent
+                                </div>
+                                
+                                <!-- Jobb oldal: Színkódolás magyarázat -->
+                                <div class="col-md-4">
+                                    <strong>🎨 Színkódolás:</strong><br>
+                                    🟢 <strong>Kedvező</strong> - Pozitív hatás<br>
+                                    🟡 <strong>Semleges</strong> - Átlagos érték<br>
+                                    🔴 <strong>Kedvezőtlen</strong> - Negatív hatás
+                                </div>
+                            </div>
+    </div>
                     {% endif %}
                 </div>
             </div>
