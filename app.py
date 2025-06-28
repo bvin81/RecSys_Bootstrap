@@ -89,23 +89,111 @@ def get_db_connection():
 
 class GreenRecRecommender:
     def __init__(self):
-        self.recipes_df = None
-        self.scaler = MinMaxScaler()
-        self.vectorizer = CountVectorizer(
-            stop_words='english',
-            ngram_range=(1, 2),  # 1-2 gram kombinációk
-            max_features=1000,   # Max 1000 feature
-            lowercase=True,
-            token_pattern=r'\b[a-zA-ZáéíóöőúüűÁÉÍÓÖŐÚÜŰ]+\b'  # Magyar karakterek is
-        )
-        self.ingredient_matrix = None
-        self.user_history = {}
-        
         logger.info("🔧 Ajánlórendszer inicializálása...")
+        self.recipes_df = None
+        # COSINE SIMILARITY hozzáadása
+        self.vectorizer = CountVectorizer(
+            stop_words='english', 
+            max_features=1000,
+            ngram_range=(1, 2),  # 1-2 gram kombinációk
+            lowercase=True,
+            token_pattern=r'\b[a-zA-ZáéíóöőúüűÁÉÍÓÖŐÚÜŰ]+\b'  # Magyar karakterek
+        )
+        self.scaler = MinMaxScaler()
+        self.ingredient_matrix = None  # ÚJ: Cosine similarity mátrix
+        self.user_history = {}  # Felhasználói előzmények tárolása
         self.load_recipes()
+        logger.info("✅ Ajánlórendszer sikeresen inicializálva")
+    
+    def load_recipes(self):
+        """Receptek betöltése adatbázisból SAFE hibakezeléssel"""
+        try:
+            conn = get_db_connection()
+            if conn is None:
+                logger.warning("⚠️  Nincs adatbázis kapcsolat, dummy adatok létrehozása")
+                self.create_dummy_data()
+                return
+                
+            # Ellenőrizzük, hogy létezik-e a recipes tábla
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT COUNT(*) FROM recipes LIMIT 1;")
+                count = cur.fetchone()[0]
+                logger.info(f"✅ Recipes tábla létezik, {count} recept található")
+            except psycopg2.errors.UndefinedTable:
+                logger.warning("⚠️  Recipes tábla nem létezik")
+                logger.warning("⚠️  Nincs recept adat, dummy adatok létrehozása")
+                conn.close()
+                self.create_dummy_data()
+                return
+            
+            # Receptek betöltése
+            if count > 0:
+                query = """
+                    SELECT id, title, hsi, esi, ppi, category, ingredients, instructions, images
+                    FROM recipes 
+                    ORDER BY id
+                """
+                self.recipes_df = pd.read_sql_query(query, conn)
+                logger.info(f"✅ {len(self.recipes_df)} recept betöltve az adatbázisból")
+                
+                # Adatok előfeldolgozása
+                self.preprocess_data()
+            else:
+                logger.warning("⚠️  Nincs recept adat, dummy adatok létrehozása")
+                self.create_dummy_data()
+                
+            conn.close()
+            
+        except Exception as e:
+            logger.error(f"❌ Recept betöltési hiba: {e}")
+            self.create_dummy_data()
+    
+    def create_dummy_data(self):
+        """3 dummy recept létrehozása ha nincs adat"""
+        logger.info("🔧 Dummy adatok létrehozása...")
+        dummy_recipes = [
+            {
+                'id': 1,
+                'title': 'Zöldséges quinoa saláta',
+                'hsi': 95.2,
+                'esi': 24.4,
+                'ppi': 67.8,
+                'category': 'Saláták',
+                'ingredients': 'quinoa, uborka, paradicsom, avokádó, citrom',
+                'instructions': 'Főzd meg a quinoát, várd meg hogy kihűljön. Vágd apróra a zöldségeket.',
+                'images': 'https://via.placeholder.com/300x200?text=Quinoa+Salat'
+            },
+            {
+                'id': 2,
+                'title': 'Vegán chili sin carne',
+                'hsi': 76.3,
+                'esi': 15.1,
+                'ppi': 84.5,
+                'category': 'Főételek',
+                'ingredients': 'vörös bab, kukorica, paprika, hagyma, paradicsom',
+                'instructions': 'Dinszteld le a hagymát és paprikát. Add hozzá a babot.',
+                'images': 'https://via.placeholder.com/300x200?text=Vegan+Chili'
+            },
+            {
+                'id': 3,
+                'title': 'Spenótos lencse curry',
+                'hsi': 82.7,
+                'esi': 42.1,
+                'ppi': 75.8,
+                'category': 'Főételek',
+                'ingredients': 'lencse, spenót, kókusztej, curry, gyömbér',
+                'instructions': 'Főzd meg a lencsét, add hozzá a fűszereket.',
+                'images': 'https://via.placeholder.com/300x200?text=Lentil+Curry'
+            }
+        ]
+        
+        self.recipes_df = pd.DataFrame(dummy_recipes)
+        self.preprocess_data()
+        logger.info("✅ Dummy adatok létrehozva")
     
     def preprocess_data(self):
-        """Adatok előfeldolgozása COSINE SIMILARITY-vel"""
+        """Adatok előfeldolgozása ÉS cosine similarity előkészítés"""
         try:
             # HSI, ESI, PPI normalizálása
             score_columns = ['hsi', 'esi', 'ppi']
@@ -121,7 +209,7 @@ class GreenRecRecommender:
                 
                 # Alapvető szöveg tisztítás
                 ingredients_text = ingredients_text.str.lower()
-                ingredients_text = ingredients_text.str.replace(r'[^\w\s,]', '', regex=True)  # Speciális karakterek eltávolítása
+                ingredients_text = ingredients_text.str.replace(r'[^\w\s,]', '', regex=True)
                 
                 # Ingredient matrix létrehozása
                 self.ingredient_matrix = self.vectorizer.fit_transform(ingredients_text)
@@ -130,14 +218,12 @@ class GreenRecRecommender:
                 # Vocabulary mérete
                 vocab_size = len(self.vectorizer.get_feature_names_out())
                 logger.info(f"📚 Vocabulary méret: {vocab_size} ingrediens")
-                
+            
         except Exception as e:
             logger.error(f"❌ Adatok előfeldolgozási hiba: {e}")
     
     def get_content_similarity(self, target_ingredients, top_k=20):
-        """
-        Content-based similarity számítás ingredients alapján
-        """
+        """ÚJ: Content-based similarity számítás ingredients alapján"""
         try:
             if self.ingredient_matrix is None:
                 logger.warning("⚠️  Ingredient matrix nincs inicializálva")
@@ -169,7 +255,7 @@ class GreenRecRecommender:
                 if similarities[idx] > 0.01:  # Minimum similarity threshold
                     recipe_data = self.recipes_df.iloc[idx].copy()
                     recipe_data['similarity_score'] = similarities[idx]
-                    similar_recipes.append(recipe_data)
+                    similar_recipes.append(recipe_data.to_dict())
             
             logger.info(f"🔍 {len(similar_recipes)} hasonló recept találva cosine similarity alapján")
             return similar_recipes
@@ -178,70 +264,75 @@ class GreenRecRecommender:
             logger.error(f"❌ Content similarity hiba: {e}")
             return []
     
-    def get_hybrid_recommendations(self, user_preferences=None, num_recommendations=5, user_id=None):
+    def get_recommendations(self, user_preferences=None, num_recommendations=5, user_id=None, diversity_factor=0.3):
         """
-        🚀 HIBRID AJÁNLÓRENDSZER: Content-based + Score-based
+        🎯 HIBRID ajánlások generálása - Content-based + Score-based
         """
         try:
             if self.recipes_df is None or len(self.recipes_df) == 0:
                 logger.warning("⚠️  Nincs elérhető recept adat")
                 return []
             
+            # 1. ALAPVETŐ PONTSZÁMOK SZÁMÍTÁSA
             df = self.recipes_df.copy()
             
-            # 1. KOMPOZIT PONTSZÁM SZÁMÍTÁSA
+            # Kompozit pontszám számítása
             df['composite_score'] = (
                 0.4 * df['hsi'] +
                 0.4 * df['esi_inv'] +
                 0.2 * df['ppi']
             )
             
-            # 2. FELHASZNÁLÓI ELŐZMÉNYEK KIZÁRÁSA
+            # 2. FELHASZNÁLÓI ELŐZMÉNYEK FIGYELEMBEVÉTELE
             excluded_ids = []
             if user_id and user_id in self.user_history:
+                # Kizárjuk a már látott recepteket (utolsó 10 ajánlás)
                 excluded_ids = self.user_history[user_id][-10:]
                 df = df[~df['id'].isin(excluded_ids)]
+                logger.info(f"🔍 {len(excluded_ids)} már látott recept kizárva")
             
-            # 3. CONTENT-BASED SIMILARITY (ha van target ingredients)
-            content_candidates = []
-            if user_preferences and 'ingredients' in user_preferences:
-                target_ingredients = user_preferences['ingredients']
-                content_candidates = self.get_content_similarity(target_ingredients, top_k=15)
-            
-            # 4. HIBRID KOMBINÁCIÓ
+            # 3. ÚJ: HIBRID CONTENT-BASED + SCORE-BASED
             recommendations = []
             
-            if content_candidates:
-                # HIBRID MEGKÖZELÍTÉS: Content + Score
+            # Ellenőrizzük van-e target ingredients
+            target_ingredients = ""
+            if user_preferences and 'ingredients' in user_preferences:
+                target_ingredients = user_preferences['ingredients']
+            
+            if target_ingredients and target_ingredients.strip():
+                # HIBRID MEGKÖZELÍTÉS: Content-based + Score-based
                 logger.info("🔄 Hibrid ajánlás: Content-based + Score-based")
                 
-                # Content-based kandidátusok ID-i
-                content_ids = [recipe['id'] for recipe in content_candidates]
+                # Content-based similarity számítás
+                content_candidates = self.get_content_similarity(target_ingredients, top_k=15)
                 
-                # Súlyozott pontszám: similarity + composite score
-                for recipe in content_candidates:
-                    recipe_id = recipe['id']
-                    if recipe_id in df['id'].values:
-                        # Normalizált similarity (0-1)
-                        similarity_norm = recipe['similarity_score']
-                        
-                        # Normalizált composite score (0-1) 
-                        composite_norm = recipe['composite_score']
-                        
-                        # Hibrid pontszám: 50% content + 50% score (eredeti dokumentum szerint)
-                        hybrid_score = 0.5 * similarity_norm + 0.5 * composite_norm
-                        recipe['hybrid_score'] = hybrid_score
-                
-                # Rendezés hibrid pontszám szerint
-                content_candidates.sort(key=lambda x: x.get('hybrid_score', 0), reverse=True)
-                
-                # Top receptek kiválasztása
-                for recipe in content_candidates[:num_recommendations]:
-                    recommendations.append(recipe)
+                if content_candidates:
+                    # Súlyozott pontszám: similarity + composite score
+                    for recipe in content_candidates:
+                        recipe_id = recipe['id']
+                        if recipe_id in df['id'].values:
+                            # Normalizált similarity (0-1)
+                            similarity_norm = recipe['similarity_score']
+                            
+                            # Megfelelő composite score lekérése
+                            matching_row = df[df['id'] == recipe_id]
+                            if not matching_row.empty:
+                                composite_norm = matching_row['composite_score'].iloc[0]
+                                
+                                # Hibrid pontszám: 50% content + 50% score
+                                hybrid_score = 0.5 * similarity_norm + 0.5 * composite_norm
+                                recipe['hybrid_score'] = hybrid_score
                     
-            else:
-                # CSAK SCORE-BASED (ha nincs content similarity)
-                logger.info("📊 Score-based ajánlás (nincs target ingredients)")
+                    # Rendezés hibrid pontszám szerint
+                    content_candidates.sort(key=lambda x: x.get('hybrid_score', 0), reverse=True)
+                    
+                    # Top receptek kiválasztása
+                    for recipe in content_candidates[:num_recommendations]:
+                        recommendations.append(recipe)
+                
+            if not recommendations:
+                # CSAK SCORE-BASED (ha nincs content similarity vagy nincs target)
+                logger.info("📊 Score-based ajánlás (nincs target ingredients vagy similarity)")
                 
                 # Kategória diverzitás
                 available_categories = df['category'].unique()
@@ -253,45 +344,77 @@ class GreenRecRecommender:
                         weights = category_recipes['composite_score'].values
                         weights = (weights - weights.min() + 0.1) ** 2
                         
-                        selected_idx = np.random.choice(
-                            category_recipes.index, 
-                            p=weights/weights.sum()
-                        )
-                        recommendations.append(category_recipes.loc[selected_idx])
+                        try:
+                            selected_idx = np.random.choice(
+                                category_recipes.index, 
+                                p=weights/weights.sum()
+                            )
+                            selected_recipe = category_recipes.loc[selected_idx].to_dict()
+                            selected_recipe['similarity_score'] = 0.0  # Nincs similarity
+                            selected_recipe['hybrid_score'] = selected_recipe['composite_score']
+                            recommendations.append(selected_recipe)
+                        except:
+                            # Ha hiba van a random choice-szal
+                            selected_recipe = category_recipes.nlargest(1, 'composite_score').iloc[0].to_dict()
+                            selected_recipe['similarity_score'] = 0.0
+                            selected_recipe['hybrid_score'] = selected_recipe['composite_score']
+                            recommendations.append(selected_recipe)
             
-            # 5. EREDMÉNYEK FORMÁZÁSA
-            return self._format_recommendations(recommendations[:num_recommendations])
+            # 4. FELHASZNÁLÓI ELŐZMÉNYEK FRISSÍTÉSE
+            if user_id:
+                if user_id not in self.user_history:
+                    self.user_history[user_id] = []
+                
+                new_ids = [rec['id'] for rec in recommendations]
+                self.user_history[user_id].extend(new_ids)
+                # Korlátozás az utolsó 50 receptre
+                self.user_history[user_id] = self.user_history[user_id][-50:]
+            
+            # 5. RANDOM SHUFFLE ÉS FORMÁTUM ÁTALAKÍTÁSA
+            random.shuffle(recommendations)  # Véletlenszerű sorrend
+            
+            final_recommendations = []
+            for recipe in recommendations[:num_recommendations]:
+                # Pontszámok visszaalakítása megjelenítéshez (0-100 skála)
+                final_recommendations.append({
+                    'id': int(recipe['id']),
+                    'title': recipe['title'],
+                    'hsi': round(float(recipe['hsi']) * 100, 1),
+                    'esi': round(float(recipe['esi']) * 100, 1),
+                    'ppi': round(float(recipe['ppi']) * 100, 1),
+                    'category': recipe['category'],
+                    'ingredients': recipe['ingredients'],
+                    'instructions': recipe['instructions'],
+                    'images': recipe.get('images', 'https://via.placeholder.com/300x200?text=No+Image'),
+                    'similarity_score': round(recipe.get('similarity_score', 0), 3),
+                    'hybrid_score': round(recipe.get('hybrid_score', 0), 3)
+                })
+            
+            logger.info(f"✅ {len(final_recommendations)} hibrid ajánlás generálva")
+            return final_recommendations
             
         except Exception as e:
-            logger.error(f"❌ Hibrid ajánlási hiba: {e}")
+            logger.error(f"❌ Ajánlási hiba: {e}")
             return []
     
-    def _format_recommendations(self, recommendations):
-        """Ajánlások formázása kimenethez"""
-        formatted = []
+    def get_personalized_recommendations(self, user_id, user_preferences=None, num_recommendations=5):
+        """Személyre szabott ajánlások felhasználói preferenciák alapján"""
+        # Alapértelmezett diversity_factor beállítás felhasználói típus szerint
+        diversity_factors = {
+            'A': 0.4,  # Kontroll csoport - több változatosság
+            'B': 0.3,  # Pontszámos - mérsékelt változatosság  
+            'C': 0.2   # Magyarázatos - kevesebb változatosság (tudatosabb választás)
+        }
         
-        for recipe in recommendations:
-            if isinstance(recipe, dict):
-                formatted_recipe = recipe
-            else:
-                formatted_recipe = recipe.to_dict()
-            
-            # Pontszámok visszaalakítása megjelenítéshez
-            formatted.append({
-                'id': int(formatted_recipe['id']),
-                'title': formatted_recipe['title'],
-                'hsi': round(float(formatted_recipe.get('hsi', 0)) * 100, 1),
-                'esi': round(float(formatted_recipe.get('esi', 0)) * 100, 1),
-                'ppi': round(float(formatted_recipe.get('ppi', 0)) * 100, 1),
-                'category': formatted_recipe['category'],
-                'ingredients': formatted_recipe['ingredients'],
-                'instructions': formatted_recipe['instructions'],
-                'images': formatted_recipe.get('images', 'https://via.placeholder.com/300x200?text=No+Image'),
-                'similarity_score': round(formatted_recipe.get('similarity_score', 0), 3),
-                'hybrid_score': round(formatted_recipe.get('hybrid_score', 0), 3)
-            })
+        user_group = user_preferences.get('group', 'A') if user_preferences else 'A'
+        diversity = diversity_factors.get(user_group, 0.3)
         
-        return formatted
+        return self.get_recommendations(
+            user_preferences=user_preferences,
+            num_recommendations=num_recommendations,
+            user_id=user_id,
+            diversity_factor=diversity
+        )
 
 # Globális ajánlórendszer inicializálás
 logger.info("🔧 Globális ajánlórendszer inicializálása...")
@@ -500,7 +623,7 @@ def logout():
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
-    """🎯 HIBRID AJÁNLÁSOK endpoint"""
+    """🎯 HIBRID AJAX ajánlások endpoint - Content-based + Score-based"""
     if 'user_id' not in session:
         return jsonify({'error': 'Nincs bejelentkezve'}), 401
     
@@ -512,22 +635,22 @@ def recommend():
         request_data = request.get_json() if request.is_json else {}
         target_ingredients = request_data.get('ingredients', '')
         
-        # User preferenciák
+        # Felhasználói csoport és preferenciák
         user_group = session.get('user_group', 'A')
         user_preferences = {
             'group': user_group,
             'user_id': session['user_id'],
-            'ingredients': target_ingredients  # Content-based input
+            'ingredients': target_ingredients  # ÚJ: Content-based input
         }
         
         # 🚀 HIBRID ajánlások generálása
-        recommendations = recommender.get_hybrid_recommendations(
+        recommendations = recommender.get_personalized_recommendations(
+            user_id=session['user_id'],
             user_preferences=user_preferences,
-            num_recommendations=5,
-            user_id=session['user_id']
+            num_recommendations=5
         )
         
-        # ✨ SZÍNKÓDOLÁS hozzáadása
+        # ✨ SZÍNKÓDOLÁS hozzáadása minden recepthez
         for rec in recommendations:
             rec['hsi_color'] = get_score_color(rec['hsi'], 'hsi')
             rec['esi_color'] = get_score_color(rec['esi'], 'esi')
@@ -537,8 +660,25 @@ def recommend():
             rec['hsi_tooltip'] = f"Egészségességi mutató: {rec['hsi']:.1f} (magasabb = jobb)"
             rec['esi_tooltip'] = f"Környezeti hatás: {rec['esi']:.1f} (alacsonyabb = jobb)"
             rec['ppi_tooltip'] = f"Népszerűségi mutató: {rec['ppi']:.1f} (magasabb = jobb)"
+            
+            # ÚJ: Hibrid info hozzáadása
+            if rec.get('similarity_score', 0) > 0:
+                rec['is_hybrid'] = True
+                rec['hybrid_tooltip'] = f"Hibrid pontszám: {rec.get('hybrid_score', 0):.3f} (50% hasonlóság + 50% minőség)"
+            else:
+                rec['is_hybrid'] = False
+                rec['hybrid_tooltip'] = f"Minőségi pontszám: {rec.get('hybrid_score', 0):.3f} (csak HSI/ESI/PPI alapú)"
+        
+        # ✅ KULCS: AJÁNLÁSOK TELJES LOGGING-JA
+        if recommendations:
+            log_recommendation_session(session['user_id'], recommendations, user_group)
         
         logger.info(f"✅ {len(recommendations)} hibrid ajánlás generálva user_id={session['user_id']}, group={user_group}")
+        
+        # Debug info logolása
+        hybrid_count = sum(1 for rec in recommendations if rec.get('similarity_score', 0) > 0)
+        logger.info(f"📊 Hibrid ajánlások: {hybrid_count}/{len(recommendations)} content-based")
+        
         return jsonify({'recommendations': recommendations})
         
     except Exception as e:
