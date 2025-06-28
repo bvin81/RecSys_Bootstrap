@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>GreenRec - Fenntartható Receptek</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
+   <style>
         body {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
@@ -15,6 +15,8 @@
             backdrop-filter: blur(10px);
             box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
         }
+        
+        /* ===== STRUKTURÁLT KÁRTYÁK ===== */
         .recipe-card {
             border: none;
             border-radius: 15px;
@@ -22,23 +24,72 @@
             transition: all 0.3s ease;
             margin-bottom: 2rem;
             overflow: hidden;
+            background: rgba(255, 255, 255, 0.95) !important;
+            backdrop-filter: blur(10px);
         }
         .recipe-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
         }
+        
+        .card {
+            background: rgba(255, 255, 255, 0.95) !important;
+        }
+        
+        .card-body {
+            background: white !important;
+            color: #333 !important;
+            padding: 1.5rem !important;
+            line-height: 1.6;
+        }
+        
         .recipe-image {
             width: 100%;
             height: 200px;
             object-fit: cover;
             background: #f8f9fa;
         }
+        
+        /* ===== KÁRTYA TARTALOM STRUKTÚRA ===== */
         .card-title {
             font-size: 1.1rem;
             font-weight: 600;
-            color: #333;
-            margin-bottom: 0.5rem;
+            color: #333 !important;
+            margin-bottom: 1rem !important;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #f8f9fa;
             line-height: 1.3;
+        }
+        
+        .card-text {
+            color: #555 !important;
+            margin-bottom: 1rem !important;
+        }
+        
+        .card-text strong {
+            color: #28a745 !important;
+            font-weight: 600;
+        }
+        
+        /* Elkészítés details elem */
+        details {
+            margin-top: 1rem !important;
+            padding: 0.5rem 0;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #28a745 !important;
+            margin-bottom: 0.5rem;
+        }
+        
+        details p {
+            margin-top: 0.5rem;
+            padding-left: 1rem;
+            color: #666 !important;
+            font-style: italic;
         }
         
         /* ===== SZÍNKÓDOLT BADGE-EK ===== */
@@ -74,7 +125,7 @@
             color: white !important;
         }
 
-        /* Fallback régi színek (ha a dinamikus nem működik) */
+        /* Fallback régi színek */
         .hsi-badge { 
             background: rgba(40, 167, 69, 0.9); 
             color: white; 
@@ -89,6 +140,27 @@
             background: rgba(255, 193, 7, 0.9); 
             color: black; 
             border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        /* ===== KATEGÓRIA ÉS ELRENDEZÉS ===== */
+        .category-badge {
+            background: #6c757d;
+            color: white;
+            border-radius: 15px;
+            padding: 4px 10px;
+            font-size: 0.75rem;
+            margin-bottom: 0.5rem;
+            display: inline-block;
+        }
+        
+        /* Badge-ek és kategória közötti tér */
+        .d-flex.gap-2 {
+            margin: 0.5rem 0 !important;
+        }
+        
+        /* ===== GOMBOK ===== */
+        .btn {
+            margin-top: 1rem !important;
         }
         
         .btn-recommend {
@@ -122,13 +194,8 @@
             color: white;
             background: linear-gradient(135deg, #0056b3, #520dc2);
         }
-        .category-badge {
-            background: #6c757d;
-            color: white;
-            border-radius: 15px;
-            padding: 3px 8px;
-            font-size: 0.7rem;
-        }
+        
+        /* ===== EGYÉB ELEMEK ===== */
         .loading {
             display: none;
             text-align: center;
