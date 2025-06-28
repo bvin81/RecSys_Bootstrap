@@ -9,6 +9,7 @@ from flask import Flask, request, render_template, redirect, url_for, session, f
 # Logging beállítása
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 def get_score_color(score, score_type):
     """
     Pontszám alapján színkódolás
@@ -31,6 +32,7 @@ def get_score_color(score, score_type):
             return 'warning'  # Sárga
         else:                # Magas környezeti hatás
             return 'danger'   # Piros
+
 try:
     import psycopg2
     from psycopg2 import sql
@@ -85,8 +87,32 @@ def get_db_connection():
         logger.error(f"❌ Adatbázis kapcsolat hiba: {e}")
         return None
 
-# 1. MÓDOSÍTOTT GreenRecRecommender CLASS - 50-50%
+# ===== ÚJ: ROUND TRACKING FÜGGVÉNY =====
+def get_user_recommendation_round(user_id):
+    """Meghatározza, hogy hanyadik ajánlási körben van a felhasználó"""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return 1
+        
+        cur = conn.cursor()
+        
+        # Recommendation sessions számolása
+        cur.execute("""
+            SELECT COUNT(*) FROM recommendation_sessions 
+            WHERE user_id = %s
+        """, (user_id,))
+        
+        round_count = cur.fetchone()[0]
+        conn.close()
+        
+        return round_count + 1  # 1-based indexing
+        
+    except Exception as e:
+        logger.error(f"❌ Round számítási hiba: {e}")
+        return 1
 
+# ===== MÓDOSÍTOTT GreenRecRecommender CLASS =====
 class GreenRecRecommender:
     def __init__(self):
         logger.info("🔧 Ajánlórendszer inicializálása...")
@@ -264,15 +290,64 @@ class GreenRecRecommender:
             logger.error(f"❌ Content similarity hiba: {e}")
             return []
     
+    def get_user_chosen_ingredients(self, user_id):
+        """Felhasználó előző választásaiból összetevők kinyerése"""
+        try:
+            conn = get_db_connection()
+            if conn is None:
+                return ""
+            
+            cur = conn.cursor()
+            
+            # Felhasználó választásai (utolsó 5)
+            cur.execute("""
+                SELECT r.ingredients 
+                FROM user_choices uc
+                JOIN recipes r ON uc.recipe_id = r.id
+                WHERE uc.user_id = %s
+                ORDER BY uc.selected_at DESC
+                LIMIT 5
+            """, (user_id,))
+            
+            chosen_ingredients = cur.fetchall()
+            conn.close()
+            
+            if chosen_ingredients:
+                # Összes ingrediens összefűzése
+                all_ingredients = []
+                for row in chosen_ingredients:
+                    if row[0]:
+                        all_ingredients.extend(row[0].split(','))
+                
+                # Tisztítás és összeállítás
+                cleaned_ingredients = [ing.strip().lower() for ing in all_ingredients if ing.strip()]
+                unique_ingredients = list(set(cleaned_ingredients))
+                
+                result = ', '.join(unique_ingredients[:20])  # Maximum 20 ingrediens
+                logger.info(f"👤 Felhasználó választásai alapján: {result}")
+                return result
+            
+            return ""
+            
+        except Exception as e:
+            logger.error(f"❌ User ingredients kinyerési hiba: {e}")
+            return ""
+    
     def get_recommendations(self, user_preferences=None, num_recommendations=5, user_id=None, diversity_factor=0.3):
         """
-        🎯 HIBRID ajánlások generálása - Content-based + Score-based
+        🎯 KÖRÖNKÉNTI HIBRID ajánlások generálása
+        1. kör: Tiszta composite score (baseline A/B/C teszt)
+        2. kör+: Hibrid (content-based + score-based az előző választások alapján)
         """
         try:
             if self.recipes_df is None or len(self.recipes_df) == 0:
                 logger.warning("⚠️  Nincs elérhető recept adat")
                 return []
-            
+
+            # Meghatározzuk melyik körben vagyunk
+            current_round = get_user_recommendation_round(user_id) if user_id else 1
+            logger.info(f"🔄 Ajánlási kör: {current_round}")
+
             # 1. ALAPVETŐ PONTSZÁMOK SZÁMÍTÁSA
             df = self.recipes_df.copy()
             
@@ -291,75 +366,119 @@ class GreenRecRecommender:
                 df = df[~df['id'].isin(excluded_ids)]
                 logger.info(f"🔍 {len(excluded_ids)} már látott recept kizárva")
             
-            # 3. ÚJ: HIBRID CONTENT-BASED + SCORE-BASED
             recommendations = []
             
-            # Ellenőrizzük van-e target ingredients
-            target_ingredients = ""
-            if user_preferences and 'ingredients' in user_preferences:
-                target_ingredients = user_preferences['ingredients']
-            
-            if target_ingredients and target_ingredients.strip():
-                # HIBRID MEGKÖZELÍTÉS: Content-based + Score-based
-                logger.info("🔄 Hibrid ajánlás: Content-based + Score-based")
+            # 3. KÖRÖNKÉNTI LOGIKA
+            if current_round == 1:
+                # ===== ELSŐ KÖR: TISZTA COMPOSITE SCORE =====
+                logger.info("📊 1. kör: Tiszta composite score alapú ajánlás (A/B/C baseline)")
                 
-                # Content-based similarity számítás
-                content_candidates = self.get_content_similarity(target_ingredients, top_k=15)
+                # Baseline receptek - MINDEN felhasználónak ugyanazok
+                baseline_recipe_ids = [1, 2, 3, 4, 5]  # Előre definiált ID-k
                 
-                if content_candidates:
-                    # Súlyozott pontszám: similarity + composite score
-                    for recipe in content_candidates:
-                        recipe_id = recipe['id']
-                        if recipe_id in df['id'].values:
-                            # Normalizált similarity (0-1)
-                            similarity_norm = recipe['similarity_score']
-                            
-                            # Megfelelő composite score lekérése
-                            matching_row = df[df['id'] == recipe_id]
-                            if not matching_row.empty:
-                                composite_norm = matching_row['composite_score'].iloc[0]
-                                
-                                # Hibrid pontszám: 50% content + 50% score
-                                hybrid_score = 0.5 * similarity_norm + 0.5 * composite_norm
-                                recipe['hybrid_score'] = hybrid_score
-                    
-                    # Rendezés hibrid pontszám szerint
-                    content_candidates.sort(key=lambda x: x.get('hybrid_score', 0), reverse=True)
-                    
-                    # Top receptek kiválasztása
-                    for recipe in content_candidates[:num_recommendations]:
+                # Ha nincs elég baseline recept, kiegészítjük a legjobbakkal
+                if len(baseline_recipe_ids) < num_recommendations:
+                    top_recipes = df.nlargest(num_recommendations, 'composite_score')
+                    baseline_recipe_ids = top_recipes['id'].tolist()[:num_recommendations]
+                
+                # Baseline receptek lekérése
+                for recipe_id in baseline_recipe_ids[:num_recommendations]:
+                    matching_recipes = df[df['id'] == recipe_id]
+                    if not matching_recipes.empty:
+                        recipe = matching_recipes.iloc[0].to_dict()
+                        recipe['similarity_score'] = 0.0
+                        recipe['hybrid_score'] = recipe['composite_score']
+                        recipe['recommendation_type'] = 'baseline'
                         recommendations.append(recipe)
                 
-            if not recommendations:
-                # CSAK SCORE-BASED (ha nincs content similarity vagy nincs target)
-                logger.info("📊 Score-based ajánlás (nincs target ingredients vagy similarity)")
-                
-                # Kategória diverzitás
-                available_categories = df['category'].unique()
-                
-                for category in available_categories[:num_recommendations]:
-                    category_recipes = df[df['category'] == category]
-                    if not category_recipes.empty:
-                        # Weighted selection
-                        weights = category_recipes['composite_score'].values
-                        weights = (weights - weights.min() + 0.1) ** 2
+                # Ha nem találtunk elég baseline receptet, kiegészítjük
+                while len(recommendations) < num_recommendations:
+                    remaining_recipes = df[~df['id'].isin([r['id'] for r in recommendations])]
+                    if remaining_recipes.empty:
+                        break
                         
-                        try:
-                            selected_idx = np.random.choice(
-                                category_recipes.index, 
-                                p=weights/weights.sum()
-                            )
-                            selected_recipe = category_recipes.loc[selected_idx].to_dict()
-                            selected_recipe['similarity_score'] = 0.0  # Nincs similarity
-                            selected_recipe['hybrid_score'] = selected_recipe['composite_score']
-                            recommendations.append(selected_recipe)
-                        except:
-                            # Ha hiba van a random choice-szal
-                            selected_recipe = category_recipes.nlargest(1, 'composite_score').iloc[0].to_dict()
-                            selected_recipe['similarity_score'] = 0.0
-                            selected_recipe['hybrid_score'] = selected_recipe['composite_score']
-                            recommendations.append(selected_recipe)
-            
+                    best_recipe = remaining_recipes.nlargest(1, 'composite_score').iloc[0].to_dict()
+                    best_recipe['similarity_score'] = 0.0
+                    best_recipe['hybrid_score'] = best_recipe['composite_score']
+                    best_recipe['recommendation_type'] = 'baseline_fallback'
+                    recommendations.append(best_recipe)
+                    
+            else:
+                # ===== MÁSODIK+ KÖR: HIBRID CONTENT-BASED =====
+                logger.info(f"🔄 {current_round}. kör: Hibrid ajánlás (content-based + score-based)")
+                
+                # Előző választások lekérése az adatbázisból
+                user_chosen_ingredients = self.get_user_chosen_ingredients(user_id)
+                
+                if user_chosen_ingredients:
+                    # Content-based similarity az előző választások alapján
+                    logger.info(f"🍽️ Content-based az előző választások alapján: {user_chosen_ingredients}")
+                    
+                    content_candidates = self.get_content_similarity(user_chosen_ingredients, top_k=15)
+                    
+                    if content_candidates:
+                        # Hibrid pontszám: 50% similarity + 50% composite score
+                        for recipe in content_candidates:
+                            recipe_id = recipe['id']
+                            if recipe_id in df['id'].values:
+                                similarity_norm = recipe['similarity_score']
+                                matching_row = df[df['id'] == recipe_id]
+                                
+                                if not matching_row.empty:
+                                    composite_norm = matching_row['composite_score'].iloc[0]
+                                    
+                                    # 50/50 hibrid pontszám
+                                    hybrid_score = 0.5 * similarity_norm + 0.5 * composite_norm
+                                    recipe['hybrid_score'] = hybrid_score
+                                    recipe['recommendation_type'] = 'hybrid'
+                        
+                        # Rendezés hibrid pontszám szerint
+                        content_candidates.sort(key=lambda x: x.get('hybrid_score', 0), reverse=True)
+                        
+                        # Top receptek kiválasztása
+                        for recipe in content_candidates[:num_recommendations]:
+                            recommendations.append(recipe)
+                
+                # Ha nincs elég hibrid ajánlás, kiegészítjük score-based-del
+                if len(recommendations) < num_recommendations:
+                    logger.info("🔄 Kiegészítés score-based ajánlásokkal")
+                    
+                    remaining_needed = num_recommendations - len(recommendations)
+                    used_ids = [r['id'] for r in recommendations]
+                    remaining_recipes = df[~df['id'].isin(used_ids)]
+                    
+                    if not remaining_recipes.empty:
+                        # Súlyozott véletlenszerű kiválasztás
+                        weights = remaining_recipes['composite_score'].values
+                        weights = (weights - weights.min() + 0.1) ** 2
+                        weights = weights / weights.sum()
+                        
+                        selected_indices = []
+                        attempts = 0
+                        max_attempts = len(remaining_recipes) * 2
+                        
+                        while len(selected_indices) < remaining_needed and attempts < max_attempts:
+                            try:
+                                idx = np.random.choice(remaining_recipes.index, p=weights)
+                                if idx not in selected_indices:
+                                    selected_indices.append(idx)
+                            except:
+                                # Fallback: top receptek
+                                top_recipes = remaining_recipes.nlargest(remaining_needed, 'composite_score')
+                                for idx in top_recipes.index:
+                                    if len(selected_indices) < remaining_needed:
+                                        selected_indices.append(idx)
+                                break
+                            attempts += 1
+                        
+                        # Score-based receptek hozzáadása
+                        for idx in selected_indices:
+                            recipe = remaining_recipes.loc[idx].to_dict()
+                            recipe['similarity_score'] = 0.0
+                            recipe['hybrid_score'] = recipe['composite_score']
+                            recipe['recommendation_type'] = 'score_based'
+                            recommendations.append(recipe)
+
             # 4. FELHASZNÁLÓI ELŐZMÉNYEK FRISSÍTÉSE
             if user_id:
                 if user_id not in self.user_history:
@@ -367,15 +486,14 @@ class GreenRecRecommender:
                 
                 new_ids = [rec['id'] for rec in recommendations]
                 self.user_history[user_id].extend(new_ids)
-                # Korlátozás az utolsó 50 receptre
                 self.user_history[user_id] = self.user_history[user_id][-50:]
-            
-            # 5. RANDOM SHUFFLE ÉS FORMÁTUM ÁTALAKÍTÁSA
-            random.shuffle(recommendations)  # Véletlenszerű sorrend
-            
+
+            # 5. FORMÁTUM ÁTALAKÍTÁSA
+            if current_round > 1:
+                random.shuffle(recommendations)  # Csak 2. kör+ esetén shuffle
+
             final_recommendations = []
             for recipe in recommendations[:num_recommendations]:
-                # Pontszámok visszaalakítása megjelenítéshez (0-100 skála)
                 final_recommendations.append({
                     'id': int(recipe['id']),
                     'title': recipe['title'],
@@ -387,12 +505,14 @@ class GreenRecRecommender:
                     'instructions': recipe['instructions'],
                     'images': recipe.get('images', 'https://via.placeholder.com/300x200?text=No+Image'),
                     'similarity_score': round(recipe.get('similarity_score', 0), 3),
-                    'hybrid_score': round(recipe.get('hybrid_score', 0), 3)
+                    'hybrid_score': round(recipe.get('hybrid_score', 0), 3),
+                    'recommendation_type': recipe.get('recommendation_type', 'unknown'),
+                    'round_number': current_round
                 })
-            
-            logger.info(f"✅ {len(final_recommendations)} hibrid ajánlás generálva")
+
+            logger.info(f"✅ {len(final_recommendations)} ajánlás generálva ({current_round}. kör)")
             return final_recommendations
-            
+
         except Exception as e:
             logger.error(f"❌ Ajánlási hiba: {e}")
             return []
@@ -424,41 +544,6 @@ try:
 except Exception as e:
     logger.error(f"❌ Ajánlórendszer inicializálási hiba: {e}")
     recommender = None
-
-# ===== RECOMMENDATION LOGGING =====
-def log_recommendations(user_id, recommendations):
-    """Ajánlások rögzítése az adatbázisba metrikák számításához"""
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return
-            
-        cur = conn.cursor()
-        
-        # Recommendation sessions tábla létrehozása ha nem létezik
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS recommendation_sessions (
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                session_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                recommended_recipe_ids TEXT NOT NULL,
-                recommendation_count INTEGER DEFAULT 5
-            )
-        """)
-        
-        # Session adatok beszúrása
-        recipe_ids = ','.join([str(rec['id']) for rec in recommendations])
-        cur.execute("""
-            INSERT INTO recommendation_sessions (user_id, recommended_recipe_ids, recommendation_count)
-            VALUES (%s, %s, %s)
-        """, (user_id, recipe_ids, len(recommendations)))
-        
-        conn.commit()
-        conn.close()
-        logger.info(f"✅ Ajánlások logolva: user={user_id}, recipes={recipe_ids}")
-        
-    except Exception as e:
-        logger.error(f"❌ Ajánlási logging hiba: {e}")
 
 # ===== USER MANAGEMENT =====
 def create_user(username, password, group_name):
@@ -531,6 +616,57 @@ def check_user_credentials(username, password):
         logger.error(f"❌ Hitelesítési hiba: {e}")
         return False, None
 
+# ===== MÓDOSÍTOTT RECOMMENDATION LOGGING =====
+def log_recommendation_session(user_id, recommendations, user_group):
+    """Teljes ajánlási szesszió rögzítése + round number"""
+    try:
+        conn = get_db_connection()
+        if conn is None:
+            return
+            
+        cur = conn.cursor()
+        
+        # Tábla létrehozása round_number oszloppal
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS recommendation_sessions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                session_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                recommended_recipe_ids TEXT NOT NULL,
+                recipe_positions TEXT,
+                user_group VARCHAR(10),
+                round_number INTEGER DEFAULT 1,
+                recommendation_types TEXT
+            )
+        """)
+        
+        # Adatok készítése
+        recipe_ids = [str(rec['id']) for rec in recommendations]
+        recipe_positions = {str(rec['id']): i+1 for i, rec in enumerate(recommendations)}
+        recommendation_types = {str(rec['id']): rec.get('recommendation_type', 'unknown') for rec in recommendations}
+        round_number = recommendations[0].get('round_number', 1) if recommendations else 1
+        
+        # Session rögzítése
+        cur.execute("""
+            INSERT INTO recommendation_sessions 
+            (user_id, recommended_recipe_ids, recipe_positions, user_group, round_number, recommendation_types)
+            VALUES (%s, %s, %s, %s, %s, %s)
+        """, (
+            user_id, 
+            ','.join(recipe_ids),
+            json.dumps(recipe_positions),
+            user_group,
+            round_number,
+            json.dumps(recommendation_types)
+        ))
+        
+        conn.commit()
+        conn.close()
+        logger.info(f"✅ Session logged: user={user_id}, round={round_number}, type_mix={list(recommendation_types.values())}")
+        
+    except Exception as e:
+        logger.error(f"❌ Session logging hiba: {e}")
+
 # ===== FLASK ROUTES =====
 @app.route('/')
 def index():
@@ -599,7 +735,6 @@ def register():
             return render_template('register.html')
         
         # Random csoport hozzárendelés (A/B/C teszt)
-        import random
         group_name = random.choice(['A', 'B', 'C'])
         
         success, message = create_user(username, password, group_name)
@@ -623,7 +758,7 @@ def logout():
 
 @app.route('/recommend', methods=['POST'])
 def recommend():
-    """🎯 HIBRID AJAX ajánlások endpoint - JAVÍTOTT JSON kezelés"""
+    """🎯 KÖRÖNKÉNTI HIBRID AJAX ajánlások endpoint"""
     if 'user_id' not in session:
         return jsonify({'error': 'Nincs bejelentkezve'}), 401
     
@@ -631,34 +766,17 @@ def recommend():
         if recommender is None:
             return jsonify({'error': 'Ajánlórendszer nem elérhető'}), 500
         
-        # JAVÍTOTT JSON kezelés - több módon próbáljuk
-        target_ingredients = ''
-        try:
-            # Első próbálkozás: JSON request
-            if request.is_json and request.get_json():
-                request_data = request.get_json()
-                target_ingredients = request_data.get('ingredients', '')
-        except Exception as json_error:
-            logger.warning(f"⚠️ JSON parsing hiba: {json_error}")
-            # Második próbálkozás: form data
-            try:
-                target_ingredients = request.form.get('ingredients', '')
-            except Exception as form_error:
-                logger.warning(f"⚠️ Form parsing hiba: {form_error}")
-                # Harmadik próbálkozás: üres ingredients
-                target_ingredients = ''
-        
         # Felhasználói csoport és preferenciák
         user_group = session.get('user_group', 'A')
         user_preferences = {
             'group': user_group,
             'user_id': session['user_id'],
-            'ingredients': target_ingredients  # Content-based input
+            'ingredients': ''  # Körönkénti rendszerben nincs keresés
         }
         
-        logger.info(f"🔍 Ajánlás kérés: user={session['user_id']}, group={user_group}, ingredients='{target_ingredients}'")
+        logger.info(f"🔍 Ajánlás kérés: user={session['user_id']}, group={user_group}")
         
-        # 🚀 HIBRID ajánlások generálása
+        # 🚀 KÖRÖNKÉNTI HIBRID ajánlások generálása
         recommendations = recommender.get_personalized_recommendations(
             user_id=session['user_id'],
             user_preferences=user_preferences,
@@ -681,28 +799,33 @@ def recommend():
             rec['esi_tooltip'] = f"Környezeti hatás: {rec['esi']:.1f} (alacsonyabb = jobb)"
             rec['ppi_tooltip'] = f"Népszerűségi mutató: {rec['ppi']:.1f} (magasabb = jobb)"
             
-            # Hibrid info hozzáadása
-            if rec.get('similarity_score', 0) > 0:
-                rec['is_hybrid'] = True
-                rec['hybrid_tooltip'] = f"Hibrid pontszám: {rec.get('hybrid_score', 0):.3f} (50% hasonlóság + 50% minőség)"
+            # Round-based tooltip info
+            round_num = rec.get('round_number', 1)
+            rec_type = rec.get('recommendation_type', 'unknown')
+            
+            if round_num == 1:
+                rec['round_tooltip'] = "1. kör: Baseline ajánlás (minden felhasználó ugyanazt kapja)"
             else:
-                rec['is_hybrid'] = False
-                rec['hybrid_tooltip'] = f"Minőségi pontszám: {rec.get('hybrid_score', 0):.3f} (csak HSI/ESI/PPI alapú)"
+                if rec_type == 'hybrid':
+                    rec['round_tooltip'] = f"{round_num}. kör: Hibrid ajánlás (50% előző választások + 50% minőség)"
+                else:
+                    rec['round_tooltip'] = f"{round_num}. kör: Minőség alapú ajánlás"
         
         # ✅ KULCS: AJÁNLÁSOK TELJES LOGGING-JA
         if recommendations:
             log_recommendation_session(session['user_id'], recommendations, user_group)
         
-        logger.info(f"✅ {len(recommendations)} hibrid ajánlás generálva user_id={session['user_id']}, group={user_group}")
+        logger.info(f"✅ {len(recommendations)} ajánlás generálva user_id={session['user_id']}, group={user_group}, round={recommendations[0].get('round_number', 1)}")
         
         # Debug info logolása
-        hybrid_count = sum(1 for rec in recommendations if rec.get('similarity_score', 0) > 0)
-        logger.info(f"📊 Hibrid ajánlások: {hybrid_count}/{len(recommendations)} content-based")
+        hybrid_count = sum(1 for rec in recommendations if rec.get('recommendation_type') == 'hybrid')
+        baseline_count = sum(1 for rec in recommendations if rec.get('recommendation_type') == 'baseline')
+        logger.info(f"📊 Ajánlás típusok: {baseline_count} baseline, {hybrid_count} hibrid")
         
         return jsonify({'recommendations': recommendations})
         
     except Exception as e:
-        logger.error(f"❌ Hibrid ajánlási endpoint hiba: {e}")
+        logger.error(f"❌ Körönkénti ajánlási endpoint hiba: {e}")
         import traceback
         logger.error(f"❌ Traceback: {traceback.format_exc()}")
         return jsonify({'error': 'Hiba az ajánlások generálásakor'}), 500
@@ -785,6 +908,7 @@ def stats():
             stats['total_recipes'] = cur.fetchone()[0]
         except:
             stats['total_recipes'] = 0
+        
         # Total users számítása
         stats['total_users'] = sum(stats['users_by_group'].values())
         
@@ -798,7 +922,7 @@ def stats():
             for group, count in stats['users_by_group'].items()
         ]
         
-        # Átlag kompozit pontszám számítása (user_choices + recipes JOIN)
+        # Átlag kompozit pontszám számítása
         try:
             cur.execute("""
                 SELECT AVG(
@@ -822,6 +946,7 @@ def stats():
         except Exception as e:
             logger.error(f"❌ Kompozit pontszám számítási hiba: {e}")
             stats['avg_composite_score'] = 0.0     
+        
         conn.close()
         return render_template('stats.html', stats=stats)
         
@@ -908,7 +1033,7 @@ def export_choices():
 
 @app.route('/export/json')
 def export_json():
-    """TELJES JSON export - többlépéses lekérdezéssel"""
+    """TELJES JSON export - körönkénti adatokkal"""
     try:
         conn = get_db_connection()
         if conn is None:
@@ -916,92 +1041,74 @@ def export_json():
             
         cur = conn.cursor()
         
-        logger.info("🔍 JSON export kezdése - többlépéses lekérdezés")
+        logger.info("🔍 JSON export kezdése - körönkénti adatokkal")
         
-        # 1. VÁLASZTÁSOK lekérdezése
-        cur.execute("SELECT id, user_id, recipe_id, selected_at FROM user_choices ORDER BY selected_at;")
-        choices_raw = cur.fetchall()
-        logger.info(f"📊 {len(choices_raw)} választás betöltve")
+        # Recommendation sessions lekérdezése round info-val
+        cur.execute("""
+            SELECT rs.id, rs.user_id, rs.round_number, rs.recommendation_types, 
+                   rs.session_timestamp, rs.recommended_recipe_ids, u.group_name
+            FROM recommendation_sessions rs
+            JOIN users u ON rs.user_id = u.id
+            ORDER BY rs.session_timestamp
+        """)
+        sessions_data = cur.fetchall()
         
-        # 2. FELHASZNÁLÓK lekérdezése
-        cur.execute("SELECT id, username, group_name FROM users;")
-        users_raw = cur.fetchall()
-        users_dict = {user[0]: {'username': user[1], 'group_name': user[2]} for user in users_raw}
-        logger.info(f"👥 {len(users_dict)} felhasználó betöltve")
-        
-        # 3. RECEPTEK lekérdezése  
-        cur.execute("SELECT id, title, hsi, esi, ppi, category FROM recipes;")
-        recipes_raw = cur.fetchall()
-        recipes_dict = {
-            recipe[0]: {
-                'title': recipe[1], 
-                'hsi': float(recipe[2]), 
-                'esi': float(recipe[3]), 
-                'ppi': float(recipe[4]),
-                'category': recipe[5]
-            } for recipe in recipes_raw
-        }
-        logger.info(f"🍽️ {len(recipes_dict)} recept betöltve")
-        
-        # 4. TELJES ADATOK ÖSSZEÁLLÍTÁSA
-        export_data = {
-            'metadata': {
-                'export_timestamp': str(datetime.now()),
-                'total_choices': len(choices_raw),
-                'total_users': len(users_dict),
-                'total_recipes': len(recipes_dict)
-            },
-            'choices': []
-        }
-        
-        for choice in choices_raw:
-            choice_id, user_id, recipe_id, selected_at = choice
-            
-            # Felhasználó adatok
-            user_data = users_dict.get(user_id, {'username': 'Unknown', 'group_name': 'Unknown'})
-            
-            # Recept adatok
-            recipe_data = recipes_dict.get(recipe_id, {
-                'title': 'Unknown Recipe', 
-                'hsi': 0, 'esi': 0, 'ppi': 0, 
-                'category': 'Unknown'
-            })
-            
-            # Kompozit pontszám számítása
-            hsi = recipe_data['hsi']
-            esi = recipe_data['esi'] 
-            ppi = recipe_data['ppi']
-            esi_normalized = esi * 100 / 255  # ESI normalizálás 0-100 skálára
-            composite_score = 0.4 * hsi + 0.4 * (100 - esi_normalized) + 0.2 * ppi
-            
-            # Teljes record összeállítása
-            choice_record = {
-                'choice_id': choice_id,
-                'user_id': user_id,
-                'username': user_data['username'],
-                'group_name': user_data['group_name'],
-                'recipe_id': recipe_id,
-                'recipe_title': recipe_data['title'],
-                'category': recipe_data['category'],
-                'hsi': hsi,
-                'esi': esi,
-                'ppi': ppi,
-                'composite_score': round(composite_score, 2),
-                'good_choice': composite_score > 60,
-                'selected_at': selected_at.isoformat() if selected_at else None,
-                'user_type': 'virtual' if user_data['username'].startswith('virtual_') else 'real'
-            }
-            
-            export_data['choices'].append(choice_record)
+        # User choices lekérdezése
+        cur.execute("""
+            SELECT uc.id, uc.user_id, uc.recipe_id, uc.selected_at,
+                   u.username, u.group_name, r.title, r.hsi, r.esi, r.ppi, r.category
+            FROM user_choices uc
+            JOIN users u ON uc.user_id = u.id
+            JOIN recipes r ON uc.recipe_id = r.id
+            ORDER BY uc.selected_at
+        """)
+        choices_data = cur.fetchall()
         
         conn.close()
         
-        logger.info(f"✅ JSON export kész: {len(export_data['choices'])} teljes rekord")
+        # Export adatok összeállítása
+        export_data = {
+            'metadata': {
+                'export_timestamp': str(datetime.now()),
+                'total_sessions': len(sessions_data),
+                'total_choices': len(choices_data),
+                'export_type': 'round_based_hybrid_system'
+            },
+            'recommendation_sessions': [
+                {
+                    'session_id': s[0],
+                    'user_id': s[1],
+                    'round_number': s[2],
+                    'recommendation_types': s[3],
+                    'timestamp': s[4].isoformat() if s[4] else None,
+                    'recipe_ids': s[5],
+                    'user_group': s[6]
+                } for s in sessions_data
+            ],
+            'user_choices': [
+                {
+                    'choice_id': c[0],
+                    'user_id': c[1],
+                    'recipe_id': c[2],
+                    'selected_at': c[3].isoformat() if c[3] else None,
+                    'username': c[4],
+                    'group_name': c[5],
+                    'recipe_title': c[6],
+                    'hsi': float(c[7]),
+                    'esi': float(c[8]),
+                    'ppi': float(c[9]),
+                    'category': c[10],
+                    'composite_score': round(0.4 * float(c[7]) + 0.4 * (100 - float(c[8]) * 100 / 255) + 0.2 * float(c[9]), 2)
+                } for c in choices_data
+            ]
+        }
+        
+        logger.info(f"✅ Körönkénti JSON export kész: {len(export_data['recommendation_sessions'])} session, {len(export_data['user_choices'])} választás")
         
         return Response(
             json.dumps(export_data, indent=2, ensure_ascii=False),
             mimetype='application/json',
-            headers={'Content-Disposition': 'attachment; filename=greenrec_complete.json'}
+            headers={'Content-Disposition': 'attachment; filename=greenrec_round_based.json'}
         )
         
     except Exception as e:
@@ -1018,6 +1125,7 @@ def health_check():
             'status': 'healthy',
             'database': 'connected' if conn else 'disconnected',
             'recommender': 'active' if recommender else 'inactive',
+            'system_type': 'round_based_hybrid',
             'timestamp': datetime.now().isoformat()
         }
         if conn:
@@ -1039,483 +1147,9 @@ def not_found(error):
 def internal_error(error):
     return render_template('500.html'), 500
 
-def log_recommendation_session(user_id, recommendations, user_group):
-    """Teljes ajánlási szesszió rögzítése a metrikákhoz"""
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return
-            
-        cur = conn.cursor()
-        
-        # Recept ID-k és pozíciók
-        recipe_ids = [str(rec['id']) for rec in recommendations]
-        recipe_positions = {str(rec['id']): i+1 for i, rec in enumerate(recommendations)}
-        
-        # Session rögzítése
-        cur.execute("""
-            INSERT INTO recommendation_sessions 
-            (user_id, recommended_recipe_ids, recipe_positions, user_group)
-            VALUES (%s, %s, %s, %s)
-        """, (
-            user_id, 
-            ','.join(recipe_ids),
-            json.dumps(recipe_positions),
-            user_group
-        ))
-        
-        conn.commit()
-        conn.close()
-        logger.info(f"✅ Recommendation session logged: user={user_id}, recipes={recipe_ids}")
-        
-    except Exception as e:
-        logger.error(f"❌ Recommendation logging hiba: {e}")
-
-@app.route('/export/metrics')
-def export_metrics():
-    """Egyszerű metrikák export - user_group nélkül"""
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return jsonify({'error': 'Adatbázis kapcsolati hiba'}), 500
-        
-        cur = conn.cursor()
-        
-        # Ajánlási szesszók
-        cur.execute("SELECT COUNT(*) FROM recommendation_sessions")
-        total_sessions = cur.fetchone()[0]
-        
-        # Választások
-        cur.execute("SELECT COUNT(*) FROM user_choices")
-        total_choices = cur.fetchone()[0]
-        
-        # Hit rate
-        hit_rate = (total_choices / total_sessions) if total_sessions > 0 else 0
-        
-        # Utolsó 5 szesszió
-        cur.execute("""
-            SELECT id, user_id, session_timestamp, recommended_recipe_ids
-            FROM recommendation_sessions 
-            ORDER BY session_timestamp DESC
-            LIMIT 5
-        """)
-        
-        sessions = cur.fetchall()
-        conn.close()
-        
-        return jsonify({
-            'message': 'Alapvető metrikák',
-            'total_sessions': total_sessions,
-            'total_choices': total_choices,
-            'hit_rate': round(hit_rate, 3),
-            'recent_sessions': [
-                {
-                    'id': s[0],
-                    'user_id': s[1],
-                    'timestamp': str(s[2]),
-                    'recipes_count': len(s[3].split(',')) if s[3] else 0
-                } for s in sessions
-            ]
-        })
-        
-    except Exception as e:
-        return jsonify({'error': f'Hiba: {str(e)}'}), 500
-
-# Add hozzá ezt a route-ot az app.py-ba (az /export/metrics után):
-
-@app.route('/metrics/dashboard')
-def metrics_dashboard():
-    """Metrikák dashboard oldal"""
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            flash('Adatbázis kapcsolati hiba', 'error')
-            return render_template('metrics.html', metrics={})
-        
-        cur = conn.cursor()
-        
-        # Alapvető számok
-        cur.execute("SELECT COUNT(*) FROM recommendation_sessions")
-        total_sessions = cur.fetchone()[0]
-        
-        cur.execute("""
-            SELECT COUNT(*) FROM user_choices uc
-            JOIN recommendation_sessions rs ON uc.user_id = rs.user_id
-            WHERE uc.selected_at > rs.session_timestamp
-            AND uc.selected_at < rs.session_timestamp + INTERVAL '30 minutes'
-        """)
-        total_choices = cur.fetchone()[0]
-        
-        # CTR számítása
-        ctr = (total_choices / total_sessions * 100) if total_sessions > 0 else 0
-        
-        # Csoportonkénti stats
-        cur.execute("""
-            SELECT 
-                rs.user_group,
-                COUNT(rs.id) as sessions,
-                COUNT(uc.id) as choices
-            FROM recommendation_sessions rs
-            LEFT JOIN user_choices uc ON rs.user_id = uc.user_id
-                AND uc.selected_at > rs.session_timestamp
-                AND uc.selected_at < rs.session_timestamp + INTERVAL '30 minutes'
-            GROUP BY rs.user_group
-            ORDER BY rs.user_group
-        """)
-        
-        group_stats = cur.fetchall()
-        conn.close()
-        
-        metrics_summary = {
-            'total_sessions': total_sessions,
-            'total_choices': total_choices,
-            'overall_ctr': round(ctr, 1),
-            'group_stats': [
-                {
-                    'group': stat[0],
-                    'sessions': stat[1],
-                    'choices': stat[2],
-                    'ctr': round((stat[2] / stat[1] * 100) if stat[1] > 0 else 0, 1)
-                }
-                for stat in group_stats
-            ]
-        }
-        
-        return render_template('metrics.html', metrics=metrics_summary)
-        
-    except Exception as e:
-        logger.error(f"❌ Metrics dashboard hiba: {e}")
-        return render_template('metrics.html', metrics={})
-
-@app.route('/visualizations')
-def visualizations():
-    """Interaktív vizualizációs dashboard"""
-    try:
-        if not VISUALIZATIONS_AVAILABLE:
-            flash('Vizualizációk jelenleg nem érhetők el', 'warning')
-            return redirect(url_for('stats'))
-        
-        if 'user_id' not in session:
-            return redirect(url_for('login'))
-        
-        conn = get_db_connection()
-        if conn is None:
-            flash('Adatbázis kapcsolati hiba', 'error')
-            return render_template('visualizations.html', charts={})
-        
-        cur = conn.cursor()
-        
-        # BIZTOS MEGOLDÁS: Először nézzük meg milyen oszlopok vannak
-        cur.execute("SELECT * FROM user_choices LIMIT 1;")
-        columns = [desc[0] for desc in cur.description]
-        logger.info(f"📋 user_choices tábla oszlopai: {columns}")
-        
-        # BIZTOS: Minden oszlopot lekérdezünk és Python-ban dolgozunk
-        cur.execute("SELECT * FROM user_choices;")
-        all_rows = cur.fetchall()
-        
-        # Python-ban készítjük az adatokat
-        group_stats = {}
-        choice_data = []
-        
-        for row in all_rows:
-            row_dict = dict(zip(columns, row))
-            
-            # Csoport meghatározása (próbáljuk a lehetséges oszlopneveket)
-            group = None
-            for possible_group_col in ['group_name', 'group', 'test_group', 'user_group']:
-                if possible_group_col in row_dict:
-                    group = row_dict[possible_group_col] or 'Unknown'
-                    break
-            
-            if not group:
-                group = 'Unknown'
-            
-            # Felhasználónév meghatározása
-            username = None
-            for possible_user_col in ['username', 'user_name', 'name']:
-                if possible_user_col in row_dict:
-                    username = row_dict[possible_user_col]
-                    break
-            
-            # Csoportstatisztika
-            if group not in group_stats:
-                group_stats[group] = set()
-            if username:
-                group_stats[group].add(username)
-            
-            # Választási adat készítése
-            choice_record = {
-                'group': group,
-                'hsi': row_dict.get('hsi', 0),
-                'esi': row_dict.get('esi', 0),
-                'ppi': row_dict.get('ppi', 0),
-                'chosen_at': row_dict.get('selected_at') or row_dict.get('created_at') or row_dict.get('chosen_at'),
-                'recipe_title': row_dict.get('recipe_title') or row_dict.get('title') or row_dict.get('name', 'Unknown Recipe')
-            }
-            
-            # Kompozit pontszám számítása
-            esi_normalized = choice_record['esi'] * 100 / 255
-            choice_record['composite_score'] = 0.4 * choice_record['hsi'] + 0.4 * (100 - esi_normalized) + 0.2 * choice_record['ppi']
-            
-            choice_data.append(choice_record)
-        
-        # Csoportstatisztika formázása
-        formatted_group_stats = [
-            {'group': group, 'user_count': len(users)} 
-            for group, users in group_stats.items()
-        ]
-        
-        conn.close()
-        
-        logger.info(f"📊 Feldolgozott adatok: {len(choice_data)} választás, {len(formatted_group_stats)} csoport")
-        
-        # Vizualizációk generálása
-        charts = {}
-        
-        if formatted_group_stats:
-            charts['group_distribution'] = visualizer.group_distribution_chart(formatted_group_stats)
-        
-        if choice_data:
-            charts['composite_analysis'] = visualizer.composite_score_analysis(choice_data)
-            charts['hsi_esi_ppi_breakdown'] = visualizer.hsi_esi_ppi_breakdown(choice_data)
-            charts['timeline_analysis'] = visualizer.choice_timeline_analysis(choice_data)
-        
-        return render_template('visualizations.html', 
-                             charts=charts,
-                             stats={'total_choices': len(choice_data),
-                                   'total_groups': len(formatted_group_stats)})
-        
-    except Exception as e:
-        logger.error(f"❌ Visualizations hiba: {e}")
-        flash('Hiba történt a vizualizációk generálása során', 'error')
-        return render_template('visualizations.html', charts={})
-        
-@app.route('/export/statistical_report')
-def export_statistical_report():
-    """Részletes statisztikai jelentés exportálása JSON formátumban"""
-    try:
-        if not VISUALIZATIONS_AVAILABLE:
-            return jsonify({'error': 'Statisztikai modul nem elérhető'}), 503
-            
-        conn = get_db_connection()
-        if conn is None:
-            return jsonify({'error': 'Adatbázis kapcsolati hiba'}), 500
-        
-        cur = conn.cursor()
-        
-        # Ugyanaz az adatlekérés mint a visualizations route-ban
-        cur.execute("""
-            SELECT 
-                u.group_name as group,
-                r.hsi, r.esi, r.ppi,
-                (0.4 * r.hsi + 0.4 * (100 - r.esi * 100 / 255) + 0.2 * r.ppi) as composite_score
-                uc.chosen_at
-            FROM user_choices uc
-            JOIN users u ON uc.user_id = u.id
-            JOIN recipes r ON uc.recipe_id = r.id
-            ORDER BY uc.chosen_at
-        """)
-        
-        choice_data = []
-        for row in cur.fetchall():
-            choice_data.append({
-                'group': row[0],
-                'hsi': row[1],
-                'esi': row[2],
-                'ppi': row[3], 
-                'composite_score': row[4],
-                'chosen_at': row[5].isoformat() if row[5] else None
-            })
-        
-        # Csoportstatisztikák
-        cur.execute("""
-            SELECT group_name, COUNT(*) as user_count
-            FROM users GROUP BY group_name ORDER BY group_name
-        """)
-        group_stats = [{'group': row[0], 'user_count': row[1]} for row in cur.fetchall()]
-        
-        conn.close()
-        
-        # Statisztikai jelentés generálása
-        report = visualizer.export_statistical_report(choice_data, group_stats)
-        
-        return jsonify(report), 200, {
-            'Content-Type': 'application/json',
-            'Content-Disposition': 'attachment; filename=greenrec_statistical_report.json'
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Statistical report export hiba: {e}")
-        return jsonify({'error': f'Hiba: {str(e)}'}), 500
-
-@app.route('/charts/<chart_type>')  
-def generate_chart(chart_type):
-    """Egyedi chart generálás AJAX hívásokhoz"""
-    try:
-        if not VISUALIZATIONS_AVAILABLE:
-            return jsonify({'error': 'Vizualizációk nem elérhetők'}), 503
-            
-        conn = get_db_connection()
-        if conn is None:
-            return jsonify({'error': 'Adatbázis hiba'}), 500
-            
-        # Chart típus alapján megfelelő adatok lekérése és chart generálása
-        if chart_type == 'group_distribution':
-            cur = conn.cursor()
-            cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name ORDER BY group_name")
-            data = [{'group': row[0], 'user_count': row[1]} for row in cur.fetchall()]
-            chart_data = visualizer.group_distribution_chart(data)
-            
-        elif chart_type == 'composite_scores':
-            cur = conn.cursor()
-            cur.execute("""
-                SELECT u.group_name, r.hsi, r.esi, r.ppi,
-                       (0.4 * r.hsi + 0.4 * (100 - r.esi * 100 / 255) + 0.2 * r.ppi) as composite_score
-                       uc.chosen_at
-                FROM user_choices uc
-                JOIN users u ON uc.user_id = u.id
-                JOIN recipes r ON uc.recipe_id = r.id
-            """)
-            data = [{'group': row[0], 'hsi': row[1], 'esi': row[2], 'ppi': row[3], 
-                    'composite_score': row[4], 'chosen_at': row[5]} for row in cur.fetchall()]
-            chart_data = visualizer.composite_score_analysis(data)
-            
-        else:
-            return jsonify({'error': 'Ismeretlen chart típus'}), 400
-            
-        conn.close()
-        
-        if chart_data:
-            return jsonify({'chart': chart_data})
-        else:
-            return jsonify({'error': 'Chart generálási hiba'}), 500
-            
-    except Exception as e:
-        logger.error(f"❌ Chart generation hiba: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/debug/table_structure')
-def debug_table_structure():
-    """Debug endpoint a tábla struktúra ellenőrzéséhez"""
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Oszlopok lekérdezése
-        cur.execute("SELECT * FROM user_choices LIMIT 1;")
-        columns = [desc[0] for desc in cur.description]
-        
-        # Minta adatok
-        cur.execute("SELECT * FROM user_choices LIMIT 3;")
-        sample_rows = cur.fetchall()
-        
-        result = {
-            'columns': columns,
-            'sample_data': [dict(zip(columns, row)) for row in sample_rows],
-            'total_rows': None
-        }
-        
-        # Összes sor számolása
-        cur.execute("SELECT COUNT(*) FROM user_choices;")
-        result['total_rows'] = cur.fetchone()[0]
-        
-        conn.close()
-        
-        return f"<pre>{result}</pre>"
-        
-    except Exception as e:
-        return f"<pre>HIBA: {e}</pre>"
-
-# Add hozzá az app.py VÉGÉRE (nem módosít meglévő kódot):
-@app.route('/debug/stats_data')
-def debug_stats_data():
-    """CSAK diagnosztika - nem módosít semmit"""
-    try:
-        conn = get_db_connection()
-        if conn is None:
-            return "❌ DB kapcsolat sikertelen"
-        
-        cur = conn.cursor()
-        
-        # 1. Users tábla ellenőrzés
-        cur.execute("SELECT COUNT(*) FROM users;")
-        total_users = cur.fetchone()[0]
-        
-        # 2. Users csoportonként
-        cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name;")
-        users_by_group = dict(cur.fetchall())
-        
-        # 3. Choices ellenőrzés
-        cur.execute("SELECT COUNT(*) FROM user_choices;")
-        total_choices = cur.fetchone()[0]
-        
-        # 4. Session ellenőrzés
-        session_info = {
-            'logged_in': 'user_id' in session,
-            'user_id': session.get('user_id'),
-            'username': session.get('username'),
-            'user_group': session.get('user_group')
-        }
-        
-        conn.close()
-        
-        result = {
-            'total_users': total_users,
-            'users_by_group': users_by_group,
-            'total_choices': total_choices,
-            'session': session_info,
-            'timestamp': str(datetime.now())
-        }
-        
-        return f"<pre>{json.dumps(result, indent=2, ensure_ascii=False)}</pre>"
-        
-    except Exception as e:
-        return f"❌ HIBA: {e}"
-
-@app.route('/debug/group_stats')
-def debug_group_stats():
-    """Debug a group_stats generálását"""
-    if 'user_id' not in session:
-        return "<h2>Nincs bejelentkezve</h2>"
-    
-    try:
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Ugyanaz mint a stats route
-        cur.execute("SELECT group_name, COUNT(*) FROM users GROUP BY group_name ORDER BY group_name")
-        users_by_group = dict(cur.fetchall())
-        
-        total_users = sum(users_by_group.values())
-        
-        # Group stats generálás
-        group_stats = [
-            {
-                'group': group,
-                'user_count': count,
-                'percentage': round(count / total_users * 100, 1) if total_users > 0 else 0
-            }
-            for group, count in users_by_group.items()
-        ]
-        
-        conn.close()
-        
-        result = {
-            'users_by_group': users_by_group,
-            'total_users': total_users,
-            'group_stats': group_stats,
-            'group_stats_empty': not bool(group_stats),
-            'template_condition': bool(group_stats)
-        }
-        
-        return f"<pre>{json.dumps(result, indent=2, ensure_ascii=False)}</pre>"
-        
-    except Exception as e:
-        return f"<h2>Hiba: {e}</h2>"
 # ===== APPLICATION STARTUP =====
 if __name__ == '__main__':
-    logger.info("🚀 GreenRec alkalmazás indítása...")
+    logger.info("🚀 GreenRec körönkénti hibrid alkalmazás indítása...")
     port = int(os.environ.get('PORT', 5000))
     debug_mode = os.environ.get('FLASK_ENV') == 'development'
     
