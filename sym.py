@@ -880,10 +880,10 @@ if __name__ == "__main__":
     # results = run_enhanced_simulation(user_count=30, max_workers=3, use_parallel=True)
     
     # Közepes teszt (ajánlott):
-    results = run_enhanced_simulation(user_count=75, max_workers=4, use_parallel=True)
+    # results = run_enhanced_simulation(user_count=75, max_workers=4, use_parallel=True)
     
     # Nagy léptékű teszt (ha gyors a Heroku):
-    # results = run_enhanced_simulation(user_count=150, max_workers=6, use_parallel=True)
+    results = run_enhanced_simulation(user_count=250, max_workers=6, use_parallel=True)
     
     # Eredmények exportálása
     csv_file, summary_file = export_enhanced_results(results)
