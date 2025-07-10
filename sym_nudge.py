@@ -1154,5 +1154,3 @@ if __name__ == "__main__":
     logger.info(f"✅ Validációs funkciók beépítve")
     logger.info(f"🎯 Használd ezt a verziót a végleges futtatáshoz!")
     logger.info(f"📈 A kutatási hipotézis most már reálisan tesztelhető!")
-    
-    return results
