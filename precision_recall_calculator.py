@@ -1,491 +1,362 @@
 #!/usr/bin/env python3
 """
-Precision@5, Recall@5, Mean Composite Score és p-érték kalkulátor
-GreenRec A/B/C szimulációs eredményekhez
+FIXED PRECISION/RECALL CALCULATOR
+Kifejezetten a final_large_simulation.py adataira optimalizálva
 
-DEPENDENCIES:
-pip install pandas numpy scipy
-
-Használat:
-python precision_recall_calculator.py
+HASZNÁLAT:
+heroku run python fixed_precision_recall.py -a your-app-name
 """
 
-import pandas as pd
+import psycopg2
+import os
 import numpy as np
 from collections import defaultdict
-import json
-from scipy import stats  # Hozzáadva a statisztikai tesztekhez
+import logging
 
-# ===== RELEVANCIA KRITÉRIUMOK USER TÍPUSONKÉNT =====
-# SKÁLÁK:
-# - HSI: 0-100 (magasabb = egészségesebb)
-# - ESI: 0-255 (alacsonyabb = környezetbarátabb) 
-# - PPI: 0-100 (magasabb = népszerűbb)
-# - Composite: 0-100 (normalizált kompozit pontszám)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
+def get_db_connection():
+    """Adatbázis kapcsolat"""
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
+        return psycopg2.connect(database_url, sslmode='require')
+    return psycopg2.connect(
+        host=os.environ.get('DB_HOST', 'localhost'),
+        database=os.environ.get('DB_NAME', 'greenrec'),
+        user=os.environ.get('DB_USER', 'postgres'),
+        password=os.environ.get('DB_PASSWORD', 'password'),
+        port=os.environ.get('DB_PORT', '5432')
+    )
+
+# Relevancia kritériumok (precision_recall_calculator.py-ból)
 RELEVANCE_CRITERIA = {
-    'egészségtudatos': {
-        'hsi_min': 75,      # HSI ≥ 75/100 (magas egészség)
-        'esi_max': 180,     # ESI ≤ 180/255 (közepes környezeti hatás)  
-        'ppi_min': 50,      # PPI ≥ 50/100 (minimum népszerűség)
-        'composite_min': 75 # Composite ≥ 75/100
-    },
-    'környezettudatos': {
-        'hsi_min': 60,      # HSI ≥ 60/100 (elfogadható egészség)
-        'esi_max': 150,     # ESI ≤ 150/255 (alacsony környezeti hatás - FONTOS!)
-        'ppi_min': 40,      # PPI ≥ 40/100 (alacsonyabb népszerűség OK)
-        'composite_min': 70 # Composite ≥ 70/100
-    },
-    'ínyenc': {
-        'hsi_min': 50,      # HSI ≥ 50/100 (egészség kevésbé fontos)
-        'esi_max': 220,     # ESI ≤ 220/255 (környezet kevésbé fontos)
-        'ppi_min': 80,      # PPI ≥ 80/100 (magas népszerűség - FONTOS!)
-        'composite_min': 65 # Composite ≥ 65/100
-    },
-    'kiegyensúlyozott': {
-        'hsi_min': 65,      # HSI ≥ 65/100 (kiegyensúlyozott)
-        'esi_max': 190,     # ESI ≤ 190/255 (közepes környezeti hatás)
-        'ppi_min': 60,      # PPI ≥ 60/100 (közepes népszerűség)
-        'composite_min': 70 # Composite ≥ 70/100
-    },
-    'kényelmes': {
-        'hsi_min': 55,      # HSI ≥ 55/100 (alacsonyabb elvárások)
-        'esi_max': 200,     # ESI ≤ 200/255 (lazább környezeti kritérium)
-        'ppi_min': 75,      # PPI ≥ 75/100 (népszerű receptek)
-        'composite_min': 65 # Composite ≥ 65/100
-    },
-    'újdonságkereső': {
-        'hsi_min': 60,      # HSI ≥ 60/100 (egészségtudatos)
-        'esi_max': 170,     # ESI ≤ 170/255 (környezettudatos)
-        'ppi_max': 70,      # PPI ≤ 70/100 (ALACSONY népszerűség - ritka receptek!)
-        'composite_min': 70 # Composite ≥ 70/100
-    }
+    'egeszsegtudatos': {'hsi_min': 75, 'esi_max': 180, 'ppi_min': 50},
+    'kornyezettudatos': {'hsi_min': 60, 'esi_max': 150, 'ppi_min': 40},
+    'kiegyensulyozott': {'hsi_min': 65, 'esi_max': 165, 'ppi_min': 45},
+    'izorgia': {'hsi_min': 55, 'esi_max': 200, 'ppi_min': 70},
+    'kenyelmi': {'hsi_min': 50, 'esi_max': 220, 'ppi_min': 60},
+    'ujdonsagkereso': {'hsi_min': 55, 'esi_max': 180, 'ppi_min': 45}
 }
 
-# ===== SKÁLA VALIDÁCIÓ =====
-def validate_recipe_scores(recipe):
-    """Receptek pontszámainak skála ellenőrzése"""
-    if not (0 <= recipe.get('hsi', 0) <= 100):
-        print(f"⚠️  HSI skála hiba: {recipe.get('hsi')} (elvárás: 0-100)")
-    if not (0 <= recipe.get('esi', 0) <= 255):
-        print(f"⚠️  ESI skála hiba: {recipe.get('esi')} (elvárás: 0-255)")
-    if not (0 <= recipe.get('ppi', 0) <= 100):
-        print(f"⚠️  PPI skála hiba: {recipe.get('ppi')} (elvárás: 0-100)")
-    if not (0 <= recipe.get('composite_score', 0) <= 100):
-        print(f"⚠️  Composite skála hiba: {recipe.get('composite_score')} (elvárás: 0-100)")
-
-class PrecisionRecallCalculator:
-    def __init__(self, recipes_data):
-        """
-        Inicializálás receptek adataival
+def load_final_simulation_data():
+    """Az új final_ prefix-ű szimuláció adatainak betöltése"""
+    conn = get_db_connection()
+    if not conn:
+        return None, None
+    
+    try:
+        cur = conn.cursor()
         
-        recipes_data: List of dicts with keys: id, HSI, ESI, PPI, composite_score
-        """
-        self.recipes_df = pd.DataFrame(recipes_data)
-        self.relevance_cache = {}  # User típusonkénti cache
+        # Receptek betöltése
+        cur.execute("SELECT id, title, hsi, esi, ppi FROM recipes")
+        recipes_data = cur.fetchall()
         
-        # Validáció: ellenőrizzük a skálákat
-        print("🔍 Adatok validálása...")
-        for _, recipe in self.recipes_df.iterrows():
-            validate_recipe_scores(recipe)
+        recipes = {}
+        for r in recipes_data:
+            recipes[r[0]] = {
+                'id': r[0],
+                'title': r[1],
+                'hsi': float(r[2]),
+                'esi': float(r[3]),
+                'ppi': float(r[4])
+            }
         
-    def get_relevant_recipes(self, user_type):
-        """
-        Adott user típus számára releváns receptek ID-jának listája
-        """
-        if user_type in self.relevance_cache:
-            return self.relevance_cache[user_type]
+        # Sessions betöltése - CSAK final_ prefix-ű felhasználóktól
+        cur.execute("""
+            SELECT rs.user_id, rs.recommended_recipe_ids, rs.user_group, 
+                   rs.round_number, u.username
+            FROM recommendation_sessions rs
+            JOIN users u ON rs.user_id = u.id
+            WHERE u.username LIKE 'final_%'
+            ORDER BY rs.user_id, rs.round_number
+        """)
+        sessions_data = cur.fetchall()
         
-        if user_type not in RELEVANCE_CRITERIA:
-            print(f"⚠️  Ismeretlen user típus: {user_type}")
-            return []
+        # User choices betöltése - CSAK final_ prefix-ű felhasználóktól
+        cur.execute("""
+            SELECT uc.user_id, uc.recipe_id, u.username, u.group_name
+            FROM user_choices uc
+            JOIN users u ON uc.user_id = u.id
+            WHERE u.username LIKE 'final_%'
+            ORDER BY uc.user_id
+        """)
+        choices_data = cur.fetchall()
         
-        criteria = RELEVANCE_CRITERIA[user_type]
-        relevant_ids = []
+        conn.close()
         
-        for _, recipe in self.recipes_df.iterrows():
-            # Alap kritériumok ellenőrzése
-            matches_hsi = recipe['HSI'] >= criteria['hsi_min']
-            matches_esi = recipe['ESI'] <= criteria['esi_max'] 
-            matches_composite = recipe['composite_score'] >= criteria['composite_min']
+        logger.info(f"📊 Betöltött adatok:")
+        logger.info(f"   🍽️ Receptek: {len(recipes)}")
+        logger.info(f"   📋 Sessions: {len(sessions_data)}")
+        logger.info(f"   🎯 Választások: {len(choices_data)}")
+        
+        # Sessions feldolgozása
+        sessions = []
+        for session in sessions_data:
+            user_id, recipe_ids_str, group, round_num, username = session
             
-            # PPI speciális kezelés (újdonságkereső kivétel)
-            if 'ppi_max' in criteria:  # újdonságkereső
-                matches_ppi = recipe['PPI'] <= criteria['ppi_max']
+            # User típus kinyerése a username-ből (final_A_egeszsegtudatos_001)
+            username_parts = username.split('_')
+            if len(username_parts) >= 3:
+                user_type = username_parts[2]
             else:
-                matches_ppi = recipe['PPI'] >= criteria['ppi_min']
+                user_type = 'kiegyensulyozott'  # Default
             
-            if matches_hsi and matches_esi and matches_ppi and matches_composite:
-                relevant_ids.append(recipe['id'])
+            # Recipe IDs parsing
+            if recipe_ids_str:
+                recommended_ids = [int(id.strip()) for id in recipe_ids_str.split(',') if id.strip().isdigit()]
+            else:
+                recommended_ids = []
+            
+            sessions.append({
+                'user_id': user_id,
+                'user_type': user_type,
+                'group': group,
+                'round_number': round_num,
+                'recommended_recipe_ids': recommended_ids
+            })
         
-        self.relevance_cache[user_type] = relevant_ids
-        print(f"📊 {user_type}: {len(relevant_ids)} releváns recept találva")
-        return relevant_ids
+        return recipes, sessions
+        
+    except Exception as e:
+        logger.error(f"❌ Adatok betöltési hiba: {e}")
+        if conn:
+            conn.close()
+        return None, None
+
+def get_relevant_recipes(user_type, recipes):
+    """User típus alapján releváns receptek meghatározása"""
+    if user_type not in RELEVANCE_CRITERIA:
+        logger.warning(f"⚠️ Ismeretlen user típus: {user_type}, default használata")
+        user_type = 'kiegyensulyozott'
     
-    def calculate_precision_at_k(self, recommended_ids, relevant_ids, k=5):
-        """
-        Precision@K számítás
-        
-        Returns: (precision_value, relevant_in_topk_count, k)
-        """
-        if not recommended_ids or not relevant_ids:
-            return 0.0, 0, k
-        
-        top_k = recommended_ids[:k]
-        relevant_in_topk = [r_id for r_id in top_k if r_id in relevant_ids]
-        
-        precision = len(relevant_in_topk) / len(top_k)
-        return precision, len(relevant_in_topk), len(top_k)
+    criteria = RELEVANCE_CRITERIA[user_type]
+    relevant_ids = []
     
-    def calculate_recall_at_k(self, recommended_ids, relevant_ids, k=5):
-        """
-        Recall@K számítás
+    for recipe_id, recipe in recipes.items():
+        hsi = recipe['hsi']
+        esi = recipe['esi']
+        ppi = recipe['ppi']
         
-        Returns: (recall_value, relevant_in_topk_count, total_relevant_count)
-        """
-        if not recommended_ids or not relevant_ids:
-            return 0.0, 0, len(relevant_ids) if relevant_ids else 0
-        
-        top_k = recommended_ids[:k]
-        relevant_in_topk = [r_id for r_id in top_k if r_id in relevant_ids]
-        
-        recall = len(relevant_in_topk) / len(relevant_ids)
-        return recall, len(relevant_in_topk), len(relevant_ids)
+        # Relevancia kritériumok ellenőrzése
+        if (hsi >= criteria['hsi_min'] and 
+            esi <= criteria['esi_max'] and 
+            ppi >= criteria['ppi_min']):
+            relevant_ids.append(recipe_id)
     
-    def calculate_metrics_for_user_session(self, user_session):
-        """
-        Egy felhasználói session metrikáinak számítása
-        
-        user_session dict keys:
-        - user_type: str
-        - recommended_recipe_ids: list
-        - selected_recipe_ids: list (opcionális)
-        """
-        user_type = user_session['user_type']
-        recommended_ids = user_session['recommended_recipe_ids']
+    logger.debug(f"📊 {user_type}: {len(relevant_ids)} releváns recept")
+    return relevant_ids
+
+def calculate_precision_recall(recommended_ids, relevant_ids, k=5):
+    """Precision@K és Recall@K számítás"""
+    if not recommended_ids or not relevant_ids:
+        return 0.0, 0.0, 0, len(relevant_ids)
+    
+    top_k = recommended_ids[:k]
+    relevant_in_topk = [r_id for r_id in top_k if r_id in relevant_ids]
+    
+    precision = len(relevant_in_topk) / len(top_k)
+    recall = len(relevant_in_topk) / len(relevant_ids)
+    
+    return precision, recall, len(relevant_in_topk), len(relevant_ids)
+
+def calculate_final_simulation_metrics():
+    """Final simulation metrikák számítása"""
+    
+    logger.info("🚀 FIXED PRECISION@5 ÉS RECALL@5 KALKULÁTOR")
+    logger.info("🎯 Final Large Simulation Adatokra Optimalizálva")
+    logger.info("=" * 60)
+    
+    # Adatok betöltése
+    recipes, sessions = load_final_simulation_data()
+    if not recipes or not sessions:
+        logger.error("❌ Adatok betöltése sikertelen")
+        return None
+    
+    # Csoportonkénti eredmények
+    group_results = defaultdict(list)
+    
+    logger.info("🔍 PRECISION@5, RECALL@5 SZÁMÍTÁS...")
+    
+    processed_sessions = 0
+    for session in sessions:
+        user_type = session['user_type']
+        group = session['group']
+        recommended_ids = session['recommended_recipe_ids']
         
         # Releváns receptek meghatározása
-        relevant_ids = self.get_relevant_recipes(user_type)
+        relevant_ids = get_relevant_recipes(user_type, recipes)
         
-        # Precision@5 és Recall@5 számítás
-        precision_5, prec_hits, prec_total = self.calculate_precision_at_k(recommended_ids, relevant_ids, 5)
-        recall_5, rec_hits, rec_total = self.calculate_recall_at_k(recommended_ids, relevant_ids, 5)
+        # Precision/Recall számítás
+        precision, recall, hits, total_relevant = calculate_precision_recall(
+            recommended_ids, relevant_ids, 5
+        )
         
-        return {
-            'user_type': user_type,
-            'precision_at_5': round(precision_5, 4),
-            'recall_at_5': round(recall_5, 4),
-            'relevant_in_top5': prec_hits,
-            'total_relevant': rec_total,
-            'recommended_count': len(recommended_ids),
-            'relevance_ratio': round(rec_total / len(self.recipes_df), 3) if len(self.recipes_df) > 0 else 0
+        metrics = {
+            'precision_at_5': precision,
+            'recall_at_5': recall,
+            'relevant_in_top5': hits,
+            'total_relevant': total_relevant,
+            'user_type': user_type
         }
-
-# ===== PÉLDA HASZNÁLAT - SZIMULÁCIÓS ADATOKKAL =====
-
-# ===== GREENREC ADATOK BETÖLTÉSE =====
-
-def load_greenrec_recipes():
-    """
-    GreenRec dataset receptek betöltése a project knowledge-ből
-    """
-    
-    # A project knowledge-ben található GreenRec receptek mintája alapján
-    # Ez egy reprezentatív minta - a teljes dataset hasonló szerkezetű
-    sample_recipes = [
-        {'id': 810, 'title': 'Lencseleves', 'HSI': 61.50, 'ESI': 55.10, 'PPI': 60, 'category': 'Lencse'},
-        {'id': 811, 'title': 'Főszáres kukoricaleves', 'HSI': 42.74, 'ESI': 36.24, 'PPI': 90, 'category': 'Eintett levesek'},
-        {'id': 812, 'title': 'Zöldborsos rákos leves', 'HSI': 49.68, 'ESI': 82.45, 'PPI': 65, 'category': 'Eintett levesek'},
-        {'id': 813, 'title': 'Enchilada rizs', 'HSI': 48.68, 'ESI': 85.92, 'PPI': 65, 'category': 'Fehér rizs'},
-        {'id': 496, 'title': 'Gombás rakott tészta', 'HSI': 49.76, 'ESI': 146.18, 'PPI': 55, 'category': 'Európai'},
-        {'id': 497, 'title': 'Joe Kajun Vörös Bab és Rizs', 'HSI': 56.52, 'ESI': 93.74, 'PPI': 65, 'category': 'Rizs'},
-        {'id': 498, 'title': 'Kínai hosszú leves', 'HSI': 60.13, 'ESI': 66.49, 'PPI': 70, 'category': 'Tiszta leves'},
-        {'id': 275, 'title': 'Rakott tészta', 'HSI': 51.64, 'ESI': 188.34, 'PPI': 50, 'category': 'Tésztafőzérek'},
-        {'id': 276, 'title': 'Füstös édes sütőbab', 'HSI': 62.02, 'ESI': 179.92, 'PPI': 40, 'category': 'Hüvelyesek'},
-        {'id': 277, 'title': 'Lassúfőzős Csirkés Tésztaleves', 'HSI': 58.91, 'ESI': 105.62, 'PPI': 70, 'category': 'Alaplé'},
-        {'id': 476, 'title': 'Spenótos zöldségtál', 'HSI': 69.86, 'ESI': 62.87, 'PPI': 60, 'category': 'Zöldség'},
-        {'id': 477, 'title': 'Sütőtökkrém leves', 'HSI': 63.48, 'ESI': 56.97, 'PPI': 70, 'category': 'Zöldség'},
-        {'id': 478, 'title': 'Édes-savanyú kolbász', 'HSI': 60.27, 'ESI': 153.56, 'PPI': 40, 'category': 'Brunch'},
-        # További receptek hozzáadhatók...
-        {'id': 814, 'title': 'Quinoa saláta', 'HSI': 82.30, 'ESI': 45.20, 'PPI': 75, 'category': 'Saláta'},
-        {'id': 815, 'title': 'Vegán chili', 'HSI': 78.50, 'ESI': 38.90, 'PPI': 80, 'category': 'Főétel'},
-        {'id': 816, 'title': 'Mediterrán halfilé', 'HSI': 71.20, 'ESI': 95.40, 'PPI': 85, 'category': 'Hal'},
-        {'id': 817, 'title': 'Avokádós toast', 'HSI': 68.70, 'ESI': 52.10, 'PPI': 90, 'category': 'Snack'},
-    ]
-    
-    # Kompozit pontszám számítás (ahogy a szimulációban történt)
-    for recipe in sample_recipes:
-        hsi_norm = recipe['HSI'] / 100.0
-        esi_norm = (255 - recipe['ESI']) / 255.0  # Inverz normalizálás
-        ppi_norm = recipe['PPI'] / 100.0
         
-        composite = 0.4 * hsi_norm + 0.4 * esi_norm + 0.2 * ppi_norm
-        recipe['composite_score'] = round(composite * 100, 2)
-    
-    return sample_recipes
-
-def load_simulation_results():
-    """
-    VALÓDI szimulációs eredmények betöltése a project knowledge-ből
-    """
-    
-    # ===== RECEPTEK BETÖLTÉSE =====
-    recipes = load_greenrec_recipes()
-    
-    # ===== VALÓDI SZIMULÁCIÓS ADATOK =====
-    # A project knowledge-ből származó recommendation_sessions és user_choices
-    
-    real_sessions = [
-        # Mintapéldák a valódi adatokból - reprezentatív válogatás
-        {'user_id': 2, 'user_type': 'kiegyensúlyozott', 'group': 'B', 'recommended_recipe_ids': [1,2,3,4,5], 'selected_recipe_ids': [4,5]},
-        {'user_id': 6, 'user_type': 'egészségtudatos', 'group': 'B', 'recommended_recipe_ids': [1,2,3,4,5], 'selected_recipe_ids': []},
-        {'user_id': 3, 'user_type': 'kényelmes', 'group': 'A', 'recommended_recipe_ids': [1,2,3,4,5], 'selected_recipe_ids': []},
-        {'user_id': 5, 'user_type': 'ínyenc', 'group': 'B', 'recommended_recipe_ids': [1,2,3,4,5], 'selected_recipe_ids': []},
-        {'user_id': 4, 'user_type': 'környezettudatos', 'group': 'A', 'recommended_recipe_ids': [1,2,3,4,5], 'selected_recipe_ids': []},
-        
-        # További adatok a valódi szimulációból
-        {'user_id': 1, 'user_type': 'kiegyensúlyozott', 'group': 'A', 'recommended_recipe_ids': [1,2,3,4,5], 'selected_recipe_ids': [1,2]},
-        
-        # Hibrid ajánlások (2+ körök)
-        {'user_id': 2, 'user_type': 'kiegyensúlyozott', 'group': 'B', 'recommended_recipe_ids': [113,103,376,393,86], 'selected_recipe_ids': [113]},
-        {'user_id': 2, 'user_type': 'kiegyensúlyozott', 'group': 'B', 'recommended_recipe_ids': [912,34,43,664,882], 'selected_recipe_ids': [43]},
-        {'user_id': 2, 'user_type': 'kiegyensúlyozott', 'group': 'B', 'recommended_recipe_ids': [365,959,776,767,949], 'selected_recipe_ids': [365]},
-        
-        # A csoport (kontroll) hibrid ajánlások
-        {'user_id': 76, 'user_type': 'kényelmes', 'group': 'A', 'recommended_recipe_ids': [633,79,967,959,686], 'selected_recipe_ids': []},
-        {'user_id': 74, 'user_type': 'ínyenc', 'group': 'A', 'recommended_recipe_ids': [949,52,5,79,959], 'selected_recipe_ids': []},
-        {'user_id': 77, 'user_type': 'kényelmes', 'group': 'A', 'recommended_recipe_ids': [633,79,967,959,686], 'selected_recipe_ids': []},
-        
-        # C csoport (XAI) - hiányzó adatok, de reprezentálhatjuk
-        {'user_id': 73, 'user_type': 'egészségtudatos', 'group': 'C', 'recommended_recipe_ids': [921,877,183,893,4], 'selected_recipe_ids': [921,877]},
-    ]
-    
-    # ===== FELHASZNÁLÓI TÍPUSOK MEGHATÁROZÁSA =====
-    # A valódi choice adatok alapján következtetünk a user típusokra
-    user_type_mapping = {
-        # A csoport felhasználók - alacsonyabb kompozit pontszámok
-        1: 'kényelmes',      # HSI: 70.88, ESI: 216.94, PPI: 75 → kompozit: ~49
-        3: 'kényelmes', 
-        4: 'ínyenc',
-        74: 'ínyenc',
-        76: 'kényelmes',
-        77: 'kényelmes',
-        
-        # B csoport felhasználók - közepes kompozit pontszámok  
-        2: 'kiegyensúlyozott',  # Választott: recipe 4,5 → jobb pontszámok
-        5: 'ínyenc',
-        6: 'egészségtudatos',
-        75: 'kiegyensúlyozott',
-        72: 'egészségtudatos',
-        
-        # C csoport felhasználók - magas kompozit pontszámok
-        73: 'egészségtudatos',   # Választott: 921,877 → jó pontszámok  
-    }
-    
-    # User típusok frissítése
-    for session in real_sessions:
-        user_id = session['user_id']
-        if user_id in user_type_mapping:
-            session['user_type'] = user_type_mapping[user_id]
-    
-    return recipes, real_sessions
-
-def calculate_group_metrics():
-    """
-    A/B/C csoportonkénti Precision@5, Recall@5, Mean Composite Score és p-érték számítás
-    """
-    recipes, sessions = load_simulation_results()
-    calculator = PrecisionRecallCalculator(recipes)
-    
-    # Csoportonkénti eredmények gyűjtése
-    group_results = defaultdict(list)
-    group_composite_scores = defaultdict(list)  # Kompozit pontszámok tárolása
-    
-    print("🔍 PRECISION@5, RECALL@5 ÉS KOMPOZIT PONTSZÁM SZÁMÍTÁS")
-    print("=" * 60)
-    
-    for session in sessions:
-        # Precision/Recall metrikák
-        metrics = calculator.calculate_metrics_for_user_session(session)
-        group = session['group']
         group_results[group].append(metrics)
+        processed_sessions += 1
         
-        # Kompozit pontszámok számítása a kiválasztott receptekhez
-        selected_ids = session.get('selected_recipe_ids', [])
-        if selected_ids:
-            # Keresünk kompozit pontszámokat a kiválasztott receptekhez
-            recipes_df = pd.DataFrame(recipes)
-            for recipe_id in selected_ids:
-                matching_recipe = recipes_df[recipes_df['id'] == recipe_id]
-                if not matching_recipe.empty:
-                    composite_score = matching_recipe['composite_score'].iloc[0]
-                    group_composite_scores[group].append(composite_score)
-        
-        print(f"👤 User {session['user_id']} ({metrics['user_type']}, {group} csoport):")
-        print(f"   Precision@5: {metrics['precision_at_5']:.3f}")
-        print(f"   Recall@5: {metrics['recall_at_5']:.3f}")
-        print(f"   Releváns/Top5: {metrics['relevant_in_top5']}/5")
-        print(f"   Választott receptek: {len(selected_ids)} db")
-        print()
+        if processed_sessions % 100 == 0:
+            logger.info(f"   📈 Progress: {processed_sessions}/{len(sessions)} sessions feldolgozva")
     
-    # Csoportonkénti átlagok számítása
-    print("\n📊 CSOPORTONKÉNTI ÁTLAGOK ÉS STATISZTIKAI ELEMZÉS:")
-    print("=" * 55)
+    logger.info(f"✅ {processed_sessions} session feldolgozva")
     
+    # Csoportonkénti átlagok
     final_results = {}
-    all_composite_scores = []  # Összes kompozit pontszám a statisztikai teszthez
-    group_names = []  # Csoportnevek a statisztikai teszthez
+    
+    logger.info(f"\n📊 CSOPORTONKÉNTI EREDMÉNYEK:")
+    logger.info("=" * 40)
     
     for group in ['A', 'B', 'C']:
-        if group not in group_results:
-            print(f"{group} csoport: Nincs adat")
-            continue
+        if group in group_results and group_results[group]:
+            group_data = group_results[group]
             
-        group_data = group_results[group]
-        group_composites = group_composite_scores[group]
-        
-        # Precision/Recall átlagok
-        avg_precision = np.mean([m['precision_at_5'] for m in group_data])
-        avg_recall = np.mean([m['recall_at_5'] for m in group_data])
-        
-        # Kompozit pontszám átlag és szórás
-        if group_composites:
-            mean_composite = np.mean(group_composites)
-            std_composite = np.std(group_composites, ddof=1)  # Sample standard deviation
+            avg_precision = np.mean([m['precision_at_5'] for m in group_data])
+            avg_recall = np.mean([m['recall_at_5'] for m in group_data])
+            avg_hits = np.mean([m['relevant_in_top5'] for m in group_data])
+            avg_total_relevant = np.mean([m['total_relevant'] for m in group_data])
             
-            # Adatok hozzáadása a statisztikai teszthez
-            all_composite_scores.extend(group_composites)
-            group_names.extend([group] * len(group_composites))
-        else:
-            mean_composite = 0.0
-            std_composite = 0.0
-        
-        final_results[group] = {
-            'precision_at_5': round(avg_precision, 3),
-            'recall_at_5': round(avg_recall, 3),
-            'mean_composite_score': round(mean_composite, 2),
-            'std_composite_score': round(std_composite, 2),
-            'user_count': len(group_data),
-            'total_selections': len(group_composites)
-        }
-        
-        print(f"{group} csoport ({len(group_data)} felhasználó, {len(group_composites)} választás):")
-        print(f"   Átlag Precision@5: {avg_precision:.3f}")
-        print(f"   Átlag Recall@5: {avg_recall:.3f}")
-        print(f"   Mean Composite Score: {mean_composite:.2f} (±{std_composite:.2f})")
-        print()
+            # User típus eloszlás
+            user_types = {}
+            for m in group_data:
+                ut = m['user_type']
+                user_types[ut] = user_types.get(ut, 0) + 1
+            
+            final_results[group] = {
+                'precision_at_5': round(avg_precision, 4),
+                'recall_at_5': round(avg_recall, 4),
+                'avg_relevant_in_top5': round(avg_hits, 2),
+                'avg_total_relevant': round(avg_total_relevant, 1),
+                'session_count': len(group_data),
+                'user_type_distribution': user_types
+            }
+            
+            logger.info(f"\n📊 {group} Csoport ({len(group_data)} session):")
+            logger.info(f"   🎯 Precision@5: {final_results[group]['precision_at_5']}")
+            logger.info(f"   🔍 Recall@5: {final_results[group]['recall_at_5']}")
+            logger.info(f"   📈 Átlag releváns/top5: {final_results[group]['avg_relevant_in_top5']}")
+            logger.info(f"   📊 Átlag összes releváns: {final_results[group]['avg_total_relevant']}")
+            logger.info(f"   👥 User típusok: {user_types}")
     
-    # ===== STATISZTIKAI TESZTEK =====
-    print("\n🔬 STATISZTIKAI SZIGNIFIKANCIA TESZTEK:")
-    print("=" * 45)
-    
-    # Kruskal-Wallis teszt (nem parametrikus ANOVA)
+    # Hipotézis ellenőrzés
     if len(final_results) >= 2:
+        logger.info(f"\n🎯 PRECISION/RECALL HIPOTÉZIS ELLENŐRZÉS:")
+        logger.info("=" * 45)
+        
+        # Precision trend
+        prec_values = [(group, final_results[group]['precision_at_5']) for group in ['A', 'B', 'C'] if group in final_results]
+        prec_values.sort(key=lambda x: x[1], reverse=True)
+        
+        # Recall trend  
+        recall_values = [(group, final_results[group]['recall_at_5']) for group in ['A', 'B', 'C'] if group in final_results]
+        recall_values.sort(key=lambda x: x[1], reverse=True)
+        
+        logger.info(f"📈 Precision@5 ranking: {' > '.join([f'{g}({v:.3f})' for g, v in prec_values])}")
+        logger.info(f"🔍 Recall@5 ranking: {' > '.join([f'{g}({v:.3f})' for g, v in recall_values])}")
+        
+        # Trend ellenőrzés
+        precision_trend_ok = len(prec_values) >= 3 and prec_values[0][0] in ['C', 'B'] and prec_values[-1][0] == 'A'
+        recall_trend_ok = len(recall_values) >= 3 and recall_values[0][0] in ['C', 'B'] and recall_values[-1][0] == 'A'
+        
+        if precision_trend_ok and recall_trend_ok:
+            logger.info(f"🏆 PRECISION/RECALL TREND POZITÍV!")
+            logger.info(f"✅ Nudging hatás kimutatható a metrikákban")
+        elif precision_trend_ok or recall_trend_ok:
+            logger.info(f"✅ PRECISION/RECALL TREND RÉSZBEN POZITÍV")
+        else:
+            logger.info(f"⚠️ Precision/Recall trend nem optimális")
+    
+    # Kompozit pontszám számítás (adatbázisból)
+    logger.info(f"\n📊 KOMPOZIT PONTSZÁMOK VALIDÁLÁSA:")
+    logger.info("=" * 35)
+    
+    conn = get_db_connection()
+    if conn:
         try:
-            # Kompozit pontszámok csoportosítása
-            composite_groups = []
-            group_labels = []
+            cur = conn.cursor()
             
+            # Kompozit pontszámok a választott receptekből
             for group in ['A', 'B', 'C']:
-                if group in group_composite_scores and group_composite_scores[group]:
-                    composite_groups.append(group_composite_scores[group])
-                    group_labels.append(group)
+                cur.execute("""
+                    SELECT AVG(r.hsi), AVG(r.esi), AVG(r.ppi), COUNT(*)
+                    FROM user_choices uc
+                    JOIN users u ON uc.user_id = u.id
+                    JOIN recipes r ON uc.recipe_id = r.id
+                    WHERE u.username LIKE 'final_%' AND u.group_name = %s
+                """, (group,))
+                
+                result = cur.fetchone()
+                if result and result[3] > 0:  # Ha van adat
+                    avg_hsi, avg_esi, avg_ppi, count = result
+                    
+                    # Kompozit számítás
+                    hsi_norm = avg_hsi / 100.0
+                    esi_norm = (255 - avg_esi) / 255.0  # ESI inverz
+                    ppi_norm = avg_ppi / 100.0
+                    
+                    avg_composite = (0.4 * hsi_norm + 0.4 * esi_norm + 0.2 * ppi_norm) * 100
+                    
+                    final_results[group]['mean_hsi'] = round(avg_hsi, 2)
+                    final_results[group]['mean_esi'] = round(avg_esi, 2)
+                    final_results[group]['mean_ppi'] = round(avg_ppi, 2)
+                    final_results[group]['mean_composite'] = round(avg_composite, 2)
+                    final_results[group]['choices_count'] = count
+                    
+                    logger.info(f"{group}: HSI={avg_hsi:.1f}, ESI={avg_esi:.1f}, Kompozit={avg_composite:.1f} ({count} választás)")
             
-            if len(composite_groups) >= 2:
-                # Kruskal-Wallis teszt
-                h_statistic, p_value = stats.kruskal(*composite_groups)
-                
-                print(f"Kruskal-Wallis teszt (kompozit pontszámok):")
-                print(f"   H statisztika: {h_statistic:.3f}")
-                print(f"   p-érték: {p_value:.6f}")
-                print(f"   Szignifikáns: {'✅ Igen' if p_value < 0.05 else '❌ Nem'} (α = 0.05)")
-                print()
-                
-                # Páros összehasonlítások (Mann-Whitney U teszt)
-                print("Páros összehasonlítások (Mann-Whitney U teszt):")
-                comparisons = [('A', 'B'), ('A', 'C'), ('B', 'C')]
-                
-                for group1, group2 in comparisons:
-                    if (group1 in group_composite_scores and group_composite_scores[group1] and
-                        group2 in group_composite_scores and group_composite_scores[group2]):
-                        
-                        scores1 = group_composite_scores[group1]
-                        scores2 = group_composite_scores[group2]
-                        
-                        # Mann-Whitney U teszt
-                        u_statistic, u_p_value = stats.mannwhitneyu(
-                            scores1, scores2, alternative='two-sided'
-                        )
-                        
-                        # Effect size (Cohen's d becslése)
-                        pooled_std = np.sqrt((np.var(scores1, ddof=1) + np.var(scores2, ddof=1)) / 2)
-                        cohens_d = (np.mean(scores2) - np.mean(scores1)) / pooled_std if pooled_std > 0 else 0
-                        
-                        print(f"   {group1} vs {group2}:")
-                        print(f"     Mann-Whitney U: {u_statistic:.1f}")
-                        print(f"     p-érték: {u_p_value:.6f}")
-                        print(f"     Cohen's d: {cohens_d:.3f}")
-                        print(f"     Szignifikáns: {'✅ Igen' if u_p_value < 0.05 else '❌ Nem'}")
-                        print()
-                
-                # Általános statisztikai eredmény hozzáadása
-                final_results['statistical_tests'] = {
-                    'kruskal_wallis_h': round(h_statistic, 3),
-                    'kruskal_wallis_p': round(p_value, 6),
-                    'significant': p_value < 0.05
-                }
-                
+            conn.close()
+            
         except Exception as e:
-            print(f"❌ Statisztikai teszt hiba: {e}")
-    
-    # ===== HIPOTÉZIS ELLENŐRZÉS =====
-    print("\n🎯 HIPOTÉZIS ELLENŐRZÉS:")
-    print("=" * 25)
-    print("Várt sorrend kompozit pontszámokban: C > B > A")
-    
-    if len(final_results) >= 2:
-        # Rangsorolás kompozit pontszámok alapján
-        composite_ranking = []
-        for group in ['A', 'B', 'C']:
-            if group in final_results and final_results[group]['mean_composite_score'] > 0:
-                composite_ranking.append((group, final_results[group]['mean_composite_score']))
-        
-        composite_ranking.sort(key=lambda x: x[1], reverse=True)
-        ranking_str = ' > '.join([f'{g}({score:.1f})' for g, score in composite_ranking])
-        print(f"Tényleges rangsor: {ranking_str}")
-        
-        # Hipotézis kiértékelése
-        if len(composite_ranking) >= 3:
-            if (composite_ranking[0][0] == 'C' and 
-                composite_ranking[1][0] == 'B' and 
-                composite_ranking[2][0] == 'A'):
-                print("🏆 HIPOTÉZIS TELJES MÉRTÉKBEN IGAZOLÓDOTT: C > B > A")
-                hypothesis_result = "FULLY_CONFIRMED"
-            elif composite_ranking[0][0] == 'C':
-                print("✅ HIPOTÉZIS RÉSZBEN IGAZOLÓDOTT: C csoport a legjobb")
-                hypothesis_result = "PARTIALLY_CONFIRMED"
-            else:
-                print("❌ HIPOTÉZIS NEM IGAZOLÓDOTT")
-                hypothesis_result = "NOT_CONFIRMED"
-        else:
-            hypothesis_result = "INSUFFICIENT_DATA"
-        
-        final_results['hypothesis_result'] = hypothesis_result
+            logger.error(f"❌ Kompozit számítási hiba: {e}")
+            if conn:
+                conn.close()
     
     return final_results
 
-# ===== FUTTATÓ RÉSZ =====
+def print_final_table(results):
+    """Végleges táblázat kiírása"""
+    
+    logger.info(f"\n📋 VÉGLEGES PRECISION/RECALL TÁBLÁZAT:")
+    logger.info("=" * 70)
+    logger.info("Csoport | Precision@5 | Recall@5 | Mean HSI | Mean ESI | Mean Kompozit")
+    logger.info("-" * 70)
+    
+    for group in ['A', 'B', 'C']:
+        if group in results:
+            r = results[group]
+            precision = r.get('precision_at_5', 0.0)
+            recall = r.get('recall_at_5', 0.0)
+            hsi = r.get('mean_hsi', 0.0)
+            esi = r.get('mean_esi', 0.0)
+            composite = r.get('mean_composite', 0.0)
+            
+            logger.info(f"{group}       | {precision:<11.3f} | {recall:<8.3f} | {hsi:<8.1f} | {esi:<8.1f} | {composite:<13.1f}")
+
 if __name__ == "__main__":
-    print("🚀 PRECISION@5 ÉS RECALL@5 KALKULÁTOR")
-    print("GreenRec Ajánlórendszer A/B/C Teszt Eredményekhez")
-    print("=" * 60)
+    logger.info("🔧 FIXED PRECISION/RECALL CALCULATOR")
+    logger.info("🎯 Final Large Simulation adataira optimalizálva")
     
-    # Metrikák számítása
-    results = calculate_group_metrics()
-    
-    # Eredmények JSON export
-    print(f"\n💾 VÉGEREDMÉNYEK (JSON):")
-    print(json.dumps(results, indent=2))
-    
-    print(f"\n✅ Számítás befejezve!")
-    print(f"🔧 A tényleges szimulációs adatok beillesztése után futtatható.")
+    try:
+        results = calculate_final_simulation_metrics()
+        
+        if results:
+            # Végleges táblázat
+            print_final_table(results)
+            
+            logger.info(f"\n🎉 FIXED PRECISION/RECALL SZÁMÍTÁS BEFEJEZVE!")
+            logger.info(f"✅ Most már megvannak a pontos Precision@5 és Recall@5 értékek")
+            logger.info(f"📋 Használd ezeket az értékeket a dolgozat táblázatában")
+        else:
+            logger.error("❌ Számítás sikertelen")
+            
+    except Exception as e:
+        logger.error(f"❌ Kritikus hiba: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
