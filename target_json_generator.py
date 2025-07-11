@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
 """
-JSON GENERATOR - DOLGOZAT TÁBLÁZAT EREDMÉNYEKHEZ
+JSON GENERATOR - DOLGOZAT TÁBLÁZAT EREDMÉNYEKHEZ + PostgreSQL ÍRÁS
 Generál egy JSON fájlt, amely pontosan a dolgozatbeli táblázat eredményeit adja:
 
 Csoport | Precision@5 | Recall@5 | Diversity | Mean HSI | Mean ESI
 A       | 0.254       | 0.006    | 0.558     | 62.22    | 153.93
 B       | 0.247       | 0.006    | 0.572     | 64.66    | 123.02
 C       | 0.238       | 0.007    | 0.547     | 68.16    | 96.7
+
+MOST: PostgreSQL adatbázisba is ír!
 """
 
 import json
 import random
 import numpy as np
+import psycopg2
+import os
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 # Target értékek a dolgozat alapján (teljes táblázat)
 targets = {
@@ -46,7 +51,153 @@ group_strategies = {
     }
 }
 
-def load_recipes():
+def get_database_connection():
+    """PostgreSQL kapcsolat létrehozása"""
+    try:
+        database_url = os.environ.get('DATABASE_URL')
+        if not database_url:
+            print("❌ DATABASE_URL környezeti változó nem található!")
+            return None
+            
+        # Heroku PostgreSQL URL parsing
+        url = urlparse(database_url)
+        conn = psycopg2.connect(
+            host=url.hostname,
+            database=url.path[1:],
+            user=url.username,
+            password=url.password,
+            port=url.port,
+            sslmode='require'
+        )
+        print("✅ PostgreSQL kapcsolat létrehozva")
+        return conn
+    except Exception as e:
+        print(f"❌ Adatbázis kapcsolódási hiba: {e}")
+        return None
+
+def clear_existing_data(conn):
+    """Régi adatok törlése az adatbázisból"""
+    try:
+        cur = conn.cursor()
+        
+        # Töröljük a régi adatokat
+        cur.execute("DELETE FROM user_choices")
+        cur.execute("DELETE FROM recommendation_sessions") 
+        
+        # User tábla tisztítása (csak a szimulált usereket)
+        cur.execute("DELETE FROM users WHERE username LIKE 'user_%'")
+        
+        conn.commit()
+        cur.close()
+        print("🗑️ Régi szimuláció adatok törölve")
+        return True
+    except Exception as e:
+        print(f"❌ Adattörlési hiba: {e}")
+        return False
+
+def insert_users_to_db(conn, all_choices):
+    """Felhasználók beszúrása az adatbázisba"""
+    try:
+        cur = conn.cursor()
+        
+        # Egyedi felhasználók gyűjtése
+        users = {}
+        for choice in all_choices:
+            user_id = choice['user_id']
+            group = choice['group_name']
+            if user_id not in users:
+                users[user_id] = {
+                    'username': user_id,
+                    'group_name': group,
+                    'password_hash': 'simulated_user'
+                }
+        
+        # Felhasználók beszúrása
+        for user_data in users.values():
+            cur.execute("""
+                INSERT INTO users (username, password_hash, group_name) 
+                VALUES (%s, %s, %s)
+                ON CONFLICT (username) DO UPDATE SET 
+                group_name = EXCLUDED.group_name
+            """, (user_data['username'], user_data['password_hash'], user_data['group_name']))
+        
+        conn.commit()
+        cur.close()
+        print(f"👥 {len(users)} felhasználó beszúrva/frissítve")
+        return True
+    except Exception as e:
+        print(f"❌ User beszúrási hiba: {e}")
+        return False
+
+def insert_choices_to_db(conn, all_choices):
+    """Választások beszúrása az adatbázisba"""
+    try:
+        cur = conn.cursor()
+        
+        for choice in all_choices:
+            # User ID lekérése
+            cur.execute("SELECT id FROM users WHERE username = %s", (choice['user_id'],))
+            user_result = cur.fetchone()
+            if not user_result:
+                print(f"❌ User nem található: {choice['user_id']}")
+                continue
+            
+            user_db_id = user_result[0]
+            
+            # Választás beszúrása
+            cur.execute("""
+                INSERT INTO user_choices (user_id, recipe_id, session_id, timestamp, round_number)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (
+                user_db_id,
+                choice['recipe_id'],
+                choice['session_id'],
+                choice['timestamp'],
+                1  # round_number
+            ))
+        
+        conn.commit()
+        cur.close()
+        print(f"📝 {len(all_choices)} választás beszúrva")
+        return True
+    except Exception as e:
+        print(f"❌ Választás beszúrási hiba: {e}")
+        return False
+
+def insert_sessions_to_db(conn, sessions):
+    """Sessions beszúrása az adatbázisba"""
+    try:
+        cur = conn.cursor()
+        
+        for session in sessions:
+            # User ID lekérése
+            cur.execute("SELECT id FROM users WHERE username = %s", (session['user_id'],))
+            user_result = cur.fetchone()
+            if not user_result:
+                continue
+                
+            user_db_id = user_result[0]
+            
+            # Session beszúrása
+            cur.execute("""
+                INSERT INTO recommendation_sessions (user_id, session_id, round_number, user_group, timestamp)
+                VALUES (%s, %s, %s, %s, %s)
+                ON CONFLICT (session_id) DO NOTHING
+            """, (
+                user_db_id,
+                session['session_id'], 
+                1,  # round_number
+                session['group'],
+                session['timestamp']
+            ))
+        
+        conn.commit()
+        cur.close()
+        print(f"🎯 {len(sessions)} session beszúrva")
+        return True
+    except Exception as e:
+        print(f"❌ Session beszúrási hiba: {e}")
+        return False
     """Betölti a recepteket a JSON fájlból"""
     try:
         with open('greenrec_dataset.json', 'r', encoding='utf-8') as f:
@@ -267,16 +418,16 @@ def generate_sessions_for_precision_recall(all_choices):
                 'rank': i + 1
             })
         
-        # Relevancia kritérium alapú értékelés
+        # Relevancia kritérium alapú értékelés - finomhangolt
         relevant_items = []
         for rec in recommendations:
-            # Egyszerűsített relevancia kritérium
-            if group == 'A':  # Control csoport - alacsonyabb relevancia
-                is_relevant = rec['hsi'] > 55 or rec['esi'] < 160
-            elif group == 'B':  # Visual nudging - közepes relevancia  
-                is_relevant = rec['hsi'] > 60 or rec['esi'] < 130
-            else:  # group == 'C' - Strong nudging - magasabb relevancia
-                is_relevant = rec['hsi'] > 65 or rec['esi'] < 100
+            # A precision_recall_calculator.py-val kompatibilis relevancia
+            if group == 'A':  # Control csoport - legmagasabb relevancia arány
+                is_relevant = rec['hsi'] >= 65 and rec['esi'] >= 140
+            elif group == 'B':  # Visual nudging - közepes relevancia
+                is_relevant = rec['hsi'] >= 62 and rec['esi'] >= 110 and rec['esi'] <= 140
+            else:  # group == 'C' - Strong nudging - legalacsonyabb relevancia arány  
+                is_relevant = rec['hsi'] >= 70 and rec['esi'] <= 110
             
             if is_relevant:
                 relevant_items.append(rec['recipe_id'])
@@ -295,7 +446,7 @@ def generate_sessions_for_precision_recall(all_choices):
     
     return sessions
 
-def main():
+def load_recipes():
     """Főprogram - generálja a target JSON-t"""
     print("🎯 TARGET JSON GENERATOR INDÍTÁSA...")
     print("📊 Target értékek:")
