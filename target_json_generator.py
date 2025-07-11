@@ -144,14 +144,13 @@ def insert_choices_to_db(conn, all_choices):
             
             user_db_id = user_result[0]
             
-            # Választás beszúrása
+            # Választás beszúrása (user_choices tábla séma szerint)
             cur.execute("""
-                INSERT INTO user_choices (user_id, recipe_id, session_id, timestamp, round_number)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO user_choices (user_id, recipe_id, timestamp, round_number)
+                VALUES (%s, %s, %s, %s)
             """, (
                 user_db_id,
                 choice['recipe_id'],
-                choice['session_id'],
                 choice['timestamp'],
                 1  # round_number
             ))
@@ -560,14 +559,114 @@ def main():
         'target_values': targets
     }
     
-    # JSON fájl mentése (backup)
-    output_filename = 'greenrec_target_table.json'
-    with open(output_filename, 'w', encoding='utf-8') as f:
-        json.dump(output_data, f, ensure_ascii=False, indent=2)
+    # JSON fájl mentése (precision_recall_calculator.py kompatibilis formátum)
+    output_filename = 'greenrec_round_based.json'
     
-    print(f"✅ {output_filename} generálva!")
+    # Sessions átalakítása a precision_recall_calculator.py formátumára
+    recommendation_sessions = []
+    user_choices = []
+    
+    session_id_counter = 1
+    choice_id_counter = 1
+    
+    for session in sessions:
+        # Recommendation session struktúra
+        recipe_ids = ",".join([str(rec['recipe_id']) for rec in session['recommendations']])
+        recommendation_types = {}
+        for i, rec in enumerate(session['recommendations'], 1):
+            recommendation_types[str(i)] = "baseline"
+        
+        # User ID mapping (username -> numeric ID)
+        user_numeric_id = int(session['user_id'].split('_')[-1]) if '_' in session['user_id'] else 1
+        
+        recommendation_sessions.append({
+            "session_id": session_id_counter,
+            "user_id": user_numeric_id,
+            "round_number": 1,
+            "recommendation_types": json.dumps(recommendation_types),
+            "timestamp": session['timestamp'],
+            "recipe_ids": recipe_ids,
+            "user_group": session['group']
+        })
+        
+        # User choice struktúra (minden sessionhöz egy választás)
+        if session.get('chosen_recipe'):
+            user_choices.append({
+                "choice_id": choice_id_counter,
+                "user_id": user_numeric_id,
+                "recipe_id": session['chosen_recipe'],
+                "session_id": session_id_counter,
+                "round_number": 1,
+                "timestamp": session['timestamp'],
+                "group_name": session['group'],
+                "hsi": next((c['hsi'] for c in all_choices if c['recipe_id'] == session['chosen_recipe']), 0),
+                "esi": next((c['esi'] for c in all_choices if c['recipe_id'] == session['chosen_recipe']), 0),
+                "ppi": next((c['ppi'] for c in all_choices if c['recipe_id'] == session['chosen_recipe']), 60),
+                "composite_score": next((c['composite_score'] for c in all_choices if c['recipe_id'] == session['chosen_recipe']), 0),
+                "diversity_score": next((c['diversity_score'] for c in all_choices if c['recipe_id'] == session['chosen_recipe']), 0.5)
+            })
+            choice_id_counter += 1
+        
+        session_id_counter += 1
+    
+    # Precision_recall_calculator.py kompatibilis JSON struktúra
+    precision_recall_data = {
+        "metadata": {
+            "export_timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f"),
+            "total_sessions": len(recommendation_sessions),
+            "total_choices": len(user_choices),
+            "export_type": "target_simulation_round_based",
+            "target_table": "dissertation_table",
+            "generator_version": "3.0_with_postgresql"
+        },
+        "recommendation_sessions": recommendation_sessions,
+        "user_choices": user_choices
+    }
+    
+    with open(output_filename, 'w', encoding='utf-8') as f:
+        json.dump(precision_recall_data, f, ensure_ascii=False, indent=2)
+    
+    print(f"✅ {output_filename} generálva! (precision_recall_calculator.py kompatibilis)")
+    
+    # Backup JSON struktúra (eredeti formátum)
+    backup_data = {
+        'metadata': {
+            'generation_date': datetime.now().isoformat(),
+            'target_table': 'dissertation_table',
+            'generator_version': '3.0_with_postgresql',
+            'total_choices': len(all_choices),
+            'total_sessions': len(sessions),
+            'database_written': db_mode
+        },
+        'user_choices': [
+            {
+                'session_id': choice['session_id'],
+                'user_id': choice['user_id'],
+                'recipe_id': choice['recipe_id'],
+                'group_name': choice['group_name'],
+                'timestamp': choice['timestamp'],
+                'hsi': choice['hsi'],
+                'esi': choice['esi'],
+                'ppi': choice['ppi'],
+                'composite_score': choice['composite_score'],
+                'diversity_score': choice['diversity_score']
+            }
+            for choice in all_choices
+        ],
+        'sessions': sessions,
+        'target_values': targets
+    }
+    
+    # Backup fájl mentése
+    backup_filename = 'greenrec_target_table_backup.json'
+    with open(backup_filename, 'w', encoding='utf-8') as f:
+        json.dump(backup_data, f, ensure_ascii=False, indent=2)
+    
+    print(f"✅ {backup_filename} generálva! (backup)
     print(f"📊 Forrás: greenrec_dataset.json ({len(recipes)} recept)")
     print(f"🎯 Target: dolgozat táblázat eredmények")
+    print(f"📄 Precision/Recall JSON: {output_filename}")
+    print(f"📄 Backup JSON: {backup_filename}")
     
     # Csoportonkénti átlagok ellenőrzése (HSI, ESI, Diversity)
     print("\n📊 VÉGLEGES ÁTLAGOK ELLENŐRZÉSE:")
@@ -587,10 +686,12 @@ def main():
             print()
     
     if db_mode:
-        print("🎯 A precision_recall_calculator.py most a frissített PostgreSQL adatbázisból fog dolgozni!")
-        print("📋 Futtatás: heroku run python precision_recall_calculator.py -a your-app-name")
+        print("🎯 PostgreSQL adatbázis frissítve!")
+        print("📋 Precision/Recall futtatás: heroku run python precision_recall_calculator.py -a your-app-name")
+        print("📋 Webalkalmazás: heroku open -a your-app-name/stats")
     else:
         print("📋 Csak JSON generálás történt - adatbázis kapcsolat nem elérhető")
+        print("📋 Precision/Recall futtatás: python precision_recall_calculator.py")
 
 if __name__ == "__main__":
     main()
