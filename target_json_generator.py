@@ -24,11 +24,11 @@ targets = {
 def load_recipes():
     """Betölti a recepteket a JSON fájlból"""
     try:
-        with open('greenrec_data.json', 'r', encoding='utf-8') as f:
+        with open('greenrec_dataset.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
             return data.get('recipes', [])
     except FileNotFoundError:
-        print("❌ greenrec_data.json nem található!")
+        print("❌ greenrec_dataset.json nem található!")
         return []
 
 def calculate_recipe_diversity_score(recipe, all_recipes):
@@ -277,6 +277,8 @@ def main():
         json.dump(output_data, f, ensure_ascii=False, indent=2)
     
     print(f"✅ {output_filename} generálva!")
+    print(f"📊 Forrás: greenrec_dataset.json ({len(recipes)} recept)")
+    print(f"🎯 Target: dolgozat táblázat eredmények")
     
     # Csoportonkénti átlagok ellenőrzése (HSI, ESI, Diversity)
     print("\n📊 VÉGLEGES ÁTLAGOK ELLENŐRZÉSE:")
