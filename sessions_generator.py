@@ -92,6 +92,34 @@ def create_recommendation_sessions(conn, choices, recipes):
     try:
         cur = conn.cursor()
         
+        # Először ellenőrizzük, hogy létezik-e a tábla
+        cur.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = 'recommendation_sessions'
+            );
+        """)
+        table_exists = cur.fetchone()[0]
+        
+        if not table_exists:
+            logger.info("📋 recommendation_sessions tábla létrehozása...")
+            # Külön tranzakcióban hozzuk létre a táblát
+            conn.commit()  # Jelenlegi tranzakció lezárása
+            
+            cur.execute("""
+                CREATE TABLE recommendation_sessions (
+                    session_id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    round_number INTEGER DEFAULT 1,
+                    recommendation_types TEXT,
+                    timestamp TIMESTAMP,
+                    recipe_ids TEXT,
+                    user_group VARCHAR(1)
+                )
+            """)
+            conn.commit()  # Tábla létrehozás kommitálása
+            logger.info("✅ recommendation_sessions tábla létrehozva")
+        
         # Felhasználók csoportosítása
         user_groups = {}
         for choice in choices:
@@ -107,7 +135,7 @@ def create_recommendation_sessions(conn, choices, recipes):
         session_id = 1
         sessions_created = 0
         
-        logger.info("📝 Sessions generálása...")
+        logger.info("📝 Sessions beszúrása...")
         
         for user_id, user_data in user_groups.items():
             user_choices = user_data['choices']
@@ -119,24 +147,13 @@ def create_recommendation_sessions(conn, choices, recipes):
                 
                 # Ha kevesebb mint 5 választás van, random receptekkel egészítjük ki
                 while len(session_choices) < 5:
-                    # Random recept hozzáadása ugyanabból a kategóriából
-                    similar_recipes = [r for r in recipes.values() 
-                                     if abs(r['hsi'] - session_choices[0]['recipe_id']) < 20]
-                    if similar_recipes:
-                        random_recipe = random.choice(similar_recipes)
-                        fake_choice = {
-                            'recipe_id': random_recipe['id'],
-                            'selected_at': session_choices[-1]['selected_at']
-                        }
-                        session_choices.append(fake_choice)
-                    else:
-                        # Fallback: random recept
-                        random_recipe_id = random.choice(list(recipes.keys()))
-                        fake_choice = {
-                            'recipe_id': random_recipe_id,
-                            'selected_at': session_choices[-1]['selected_at']
-                        }
-                        session_choices.append(fake_choice)
+                    # Random recept választása
+                    random_recipe_id = random.choice(list(recipes.keys()))
+                    fake_choice = {
+                        'recipe_id': random_recipe_id,
+                        'selected_at': session_choices[-1]['selected_at'] if session_choices else None
+                    }
+                    session_choices.append(fake_choice)
                 
                 # Recipe ID-k string-be összefűzése
                 recipe_ids = ",".join([str(choice['recipe_id']) for choice in session_choices[:5]])
@@ -144,55 +161,20 @@ def create_recommendation_sessions(conn, choices, recipes):
                 # Recommendation types JSON
                 recommendation_types = '{"1": "baseline", "2": "baseline", "3": "baseline", "4": "baseline", "5": "baseline"}'
                 
-                # Session beszúrása (ha létezik recommendation_sessions tábla)
-                try:
-                    cur.execute("""
-                        INSERT INTO recommendation_sessions 
-                        (session_id, user_id, round_number, recommendation_types, timestamp, recipe_ids, user_group)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    """, (
-                        session_id,
-                        user_id,
-                        1,
-                        recommendation_types,
-                        session_choices[0]['selected_at'],
-                        recipe_ids,
-                        group_name
-                    ))
-                    sessions_created += 1
-                except Exception as e:
-                    # Ha nincs recommendation_sessions tábla, hozzuk létre
-                    if "does not exist" in str(e):
-                        logger.info("📋 recommendation_sessions tábla létrehozása...")
-                        cur.execute("""
-                            CREATE TABLE IF NOT EXISTS recommendation_sessions (
-                                session_id SERIAL PRIMARY KEY,
-                                user_id INTEGER,
-                                round_number INTEGER DEFAULT 1,
-                                recommendation_types TEXT,
-                                timestamp TIMESTAMP,
-                                recipe_ids TEXT,
-                                user_group VARCHAR(1)
-                            )
-                        """)
-                        # Újra próbálkozás
-                        cur.execute("""
-                            INSERT INTO recommendation_sessions 
-                            (session_id, user_id, round_number, recommendation_types, timestamp, recipe_ids, user_group)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
-                        """, (
-                            session_id,
-                            user_id,
-                            1,
-                            recommendation_types,
-                            session_choices[0]['selected_at'],
-                            recipe_ids,
-                            group_name
-                        ))
-                        sessions_created += 1
-                    else:
-                        logger.error(f"❌ Session beszúrási hiba: {e}")
-                
+                # Session beszúrása
+                cur.execute("""
+                    INSERT INTO recommendation_sessions 
+                    (user_id, round_number, recommendation_types, timestamp, recipe_ids, user_group)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (
+                    user_id,
+                    1,
+                    recommendation_types,
+                    session_choices[0]['selected_at'],
+                    recipe_ids,
+                    group_name
+                ))
+                sessions_created += 1
                 session_id += 1
         
         conn.commit()
@@ -201,6 +183,8 @@ def create_recommendation_sessions(conn, choices, recipes):
         return sessions_created
     except Exception as e:
         logger.error(f"❌ Sessions létrehozási hiba: {e}")
+        # Rollback és újra próbálkozás
+        conn.rollback()
         return 0
 
 def validate_sessions(conn):
