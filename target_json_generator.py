@@ -332,8 +332,8 @@ def find_suitable_recipes_for_target(target_values, recipes, group_name):
     print(f"   📊 {group_name} csoport: {len(suitable_recipes)} alkalmas recept, {len(high_relevance_recipes)} releváns")
     return suitable_recipes, high_relevance_recipes
 
-def generate_target_choices_for_group_with_diversity(group, target_values, recipes, num_choices=200):
-    """Generál választásokat egy csoporthoz a target értékek eléréséhez - finomhangolt verzió"""
+def generate_target_choices_for_group_with_diversity(group, target_values, recipes, num_choices=467):
+    """Generál választásokat egy csoporthoz a target értékek eléréséhez - NAGY LÉPTÉKŰ verzió"""
     suitable_recipes, high_relevance_recipes = find_suitable_recipes_for_target(target_values, recipes, group)
     strategy = group_strategies[group]
     
@@ -347,65 +347,78 @@ def generate_target_choices_for_group_with_diversity(group, target_values, recip
     
     print(f"   🎯 {group} csoport stratégia: {high_relevance_count}/{num_choices} releváns recept (target precision: {target_precision})")
     
-    for i in range(num_choices):
-        # Stratégiai recept választás a precision target eléréséhez
-        if i < high_relevance_count and high_relevance_recipes:
-            # Releváns receptek választása (precision növelése)
-            chosen_recipe = random.choice(high_relevance_recipes)
-        else:
-            # Általános suitable receptek
-            if suitable_recipes:
-                # Súlyozott választás a target HSI/ESI értékekhez
-                weights = []
-                for recipe in suitable_recipes:
-                    hsi_dist = abs(recipe['HSI'] - target_values['hsi']) / target_values['hsi']
-                    esi_dist = abs(recipe['ESI'] - target_values['esi']) / target_values['esi']
-                    diversity_dist = abs(recipe['diversity_score'] - target_values['diversity']) / target_values['diversity']
-                    
-                    # HSI/ESI súlyozás csoportonként
-                    hsi_weight = strategy['hsi_preference']
-                    esi_weight = strategy['esi_preference']
-                    
-                    # Minél kisebb a távolság, annál nagyobb a súly
-                    weight = 1.0 / (1.0 + (hsi_dist * hsi_weight) + (esi_dist * esi_weight) + diversity_dist)
-                    weights.append(weight)
-                
-                # Normalizált súlyok
-                total_weight = sum(weights)
-                if total_weight > 0:
-                    normalized_weights = [w / total_weight for w in weights]
-                    chosen_recipe = np.random.choice(suitable_recipes, p=normalized_weights)
-                else:
-                    chosen_recipe = random.choice(suitable_recipes)
+    # 117 felhasználó per csoport (467 választás / 4 átlag = ~117 user)
+    users_per_group = 117
+    choices_per_user = num_choices // users_per_group
+    extra_choices = num_choices % users_per_group
+    
+    choice_counter = 0
+    for user_idx in range(users_per_group):
+        user_choices = choices_per_user
+        if user_idx < extra_choices:
+            user_choices += 1  # Extra választások elosztása
+            
+        user_id = f"user_{group}_{user_idx+1:03d}"
+        
+        for choice_idx in range(user_choices):
+            # Stratégiai recept választás a precision target eléréséhez
+            if choice_counter < high_relevance_count and high_relevance_recipes:
+                # Releváns receptek választása (precision növelése)
+                chosen_recipe = random.choice(high_relevance_recipes)
             else:
-                chosen_recipe = random.choice(recipes)
-        
-        # Session adatok generálása
-        session_id = f"session_{group}_{i+1:03d}"
-        user_id = f"user_{group}_{random.randint(1, 70):03d}"  # Több user a recall növelésére
-        
-        choice = {
-            'session_id': session_id,
-            'user_id': user_id,
-            'recipe_id': chosen_recipe['id'],
-            'group_name': group,
-            'timestamp': (datetime.now() - timedelta(days=random.randint(0, 30))).isoformat(),
-            'hsi': chosen_recipe['HSI'],
-            'esi': chosen_recipe['ESI'],
-            'ppi': chosen_recipe.get('PPI', 60),
-            'composite_score': chosen_recipe.get('composite_score', chosen_recipe['HSI'] + chosen_recipe['ESI']),
-            'diversity_score': chosen_recipe['diversity_score'],
-            'group': group,
-            'user_type': random.choice(['egeszsegtudatos', 'kornyezettudatos', 'kiegyensulyozott', 'ujdonsagkereso']),
-            'nudging_type': {
-                'A': 'control',
-                'B': 'visual_nudging', 
-                'C': 'strong_nudging'
-            }[group],
-            'is_relevant': chosen_recipe.get('is_high_relevance', False)
-        }
-        
-        choices.append(choice)
+                # Általános suitable receptek
+                if suitable_recipes:
+                    # Súlyozott választás a target HSI/ESI értékekhez
+                    weights = []
+                    for recipe in suitable_recipes:
+                        hsi_dist = abs(recipe['HSI'] - target_values['hsi']) / target_values['hsi']
+                        esi_dist = abs(recipe['ESI'] - target_values['esi']) / target_values['esi']
+                        diversity_dist = abs(recipe['diversity_score'] - target_values['diversity']) / target_values['diversity']
+                        
+                        # HSI/ESI súlyozás csoportonként
+                        hsi_weight = strategy['hsi_preference']
+                        esi_weight = strategy['esi_preference']
+                        
+                        # Minél kisebb a távolság, annál nagyobb a súly
+                        weight = 1.0 / (1.0 + (hsi_dist * hsi_weight) + (esi_dist * esi_weight) + diversity_dist)
+                        weights.append(weight)
+                    
+                    # Normalizált súlyok
+                    total_weight = sum(weights)
+                    if total_weight > 0:
+                        normalized_weights = [w / total_weight for w in weights]
+                        chosen_recipe = np.random.choice(suitable_recipes, p=normalized_weights)
+                    else:
+                        chosen_recipe = random.choice(suitable_recipes)
+                else:
+                    chosen_recipe = random.choice(recipes)
+            
+            # Session adatok generálása
+            session_id = f"session_{group}_{user_idx+1:03d}_{choice_idx+1:02d}"
+            
+            choice = {
+                'session_id': session_id,
+                'user_id': user_id,
+                'recipe_id': chosen_recipe['id'],
+                'group_name': group,
+                'timestamp': (datetime.now() - timedelta(days=random.randint(0, 30))).isoformat(),
+                'hsi': chosen_recipe['HSI'],
+                'esi': chosen_recipe['ESI'],
+                'ppi': chosen_recipe.get('PPI', 60),
+                'composite_score': chosen_recipe.get('composite_score', chosen_recipe['HSI'] + chosen_recipe['ESI']),
+                'diversity_score': chosen_recipe['diversity_score'],
+                'group': group,
+                'user_type': random.choice(['egeszsegtudatos', 'kornyezettudatos', 'kiegyensulyozott', 'ujdonsagkereso']),
+                'nudging_type': {
+                    'A': 'control',
+                    'B': 'visual_nudging', 
+                    'C': 'strong_nudging'
+                }[group],
+                'is_relevant': chosen_recipe.get('is_high_relevance', False)
+            }
+            
+            choices.append(choice)
+            choice_counter += 1
     
     return choices
 
@@ -505,12 +518,12 @@ def main():
     
     print(f"📚 {len(recipes)} recept betöltve")
     
-    # Minden csoporthoz választások generálása - finomhangolt
+    # Minden csoporthoz választások generálása - NAGYOBB LÉPTÉKBEN
     all_choices = []
     for group, target_values in targets.items():
         print(f"🔄 {group} csoport generálása...")
         group_choices = generate_target_choices_for_group_with_diversity(
-            group, target_values, recipes, num_choices=200  # Növelt választások a recall javításához
+            group, target_values, recipes, num_choices=467  # 467 * 3 = 1401 választás összesen
         )
         all_choices.extend(group_choices)
         
