@@ -26,9 +26,30 @@ def load_recipes():
     try:
         with open('greenrec_dataset.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
-            return data.get('recipes', [])
+            
+            # Ha lista formátumban van a JSON
+            if isinstance(data, list):
+                print(f"📚 Lista formátum: {len(data)} recept betöltve")
+                return data
+            
+            # Ha dictionary formátumban van  
+            elif isinstance(data, dict):
+                if 'recipes' in data:
+                    print(f"📚 Dictionary formátum: {len(data['recipes'])} recept betöltve")
+                    return data['recipes']
+                else:
+                    print("📚 Dictionary formátum, 'recipes' kulcs nélkül")
+                    return list(data.values())[0] if data else []
+            
+            else:
+                print("❌ Ismeretlen JSON formátum!")
+                return []
+                
     except FileNotFoundError:
         print("❌ greenrec_dataset.json nem található!")
+        return []
+    except Exception as e:
+        print(f"❌ JSON betöltési hiba: {e}")
         return []
 
 def calculate_recipe_diversity_score(recipe, all_recipes):
@@ -36,10 +57,10 @@ def calculate_recipe_diversity_score(recipe, all_recipes):
     Diversity score számítása egy recepthez
     A diversity azt méri, hogy mennyire különbözik a recept a többi recepttől
     """
-    # Jellemzők normalizálása
-    hsi_norm = recipe['hsi'] / 100.0 if recipe['hsi'] else 0.5
-    esi_norm = min(recipe['esi'] / 200.0, 1.0) if recipe['esi'] else 0.5
-    ppi_norm = recipe.get('ppi', 60) / 100.0
+    # Jellemzők normalizálása (JSON struktura szerint)
+    hsi_norm = recipe['HSI'] / 100.0 if recipe['HSI'] else 0.5
+    esi_norm = min(recipe['ESI'] / 200.0, 1.0) if recipe['ESI'] else 0.5
+    ppi_norm = recipe.get('PPI', 60) / 100.0
     
     # Kategória diversity (alapértelmezett érték)
     category_diversity = random.uniform(0.3, 0.7)
@@ -59,11 +80,12 @@ def find_suitable_recipes_for_target(target_values, recipes, group_name):
     suitable_recipes = []
     
     for recipe in recipes:
-        if not recipe.get('hsi') or not recipe.get('esi'):
+        # JSON struktura szerint: HSI, ESI, PPI, id mezők
+        if not recipe.get('HSI') or not recipe.get('ESI'):
             continue
             
-        hsi_diff = abs(recipe['hsi'] - target_hsi)
-        esi_diff = abs(recipe['esi'] - target_esi)
+        hsi_diff = abs(recipe['HSI'] - target_hsi)
+        esi_diff = abs(recipe['ESI'] - target_esi)
         
         # Tágan értelmezett tolerancia a több választási lehetőségért
         if hsi_diff <= 25 and esi_diff <= 50:
@@ -97,8 +119,8 @@ def generate_target_choices_for_group_with_diversity(group, target_values, recip
             # Súlyozott választás a target értékekhez közelebb esők felé
             weights = []
             for recipe in suitable_recipes:
-                hsi_dist = abs(recipe['hsi'] - target_values['hsi']) / target_values['hsi']
-                esi_dist = abs(recipe['esi'] - target_values['esi']) / target_values['esi']
+                hsi_dist = abs(recipe['HSI'] - target_values['hsi']) / target_values['hsi']
+                esi_dist = abs(recipe['ESI'] - target_values['esi']) / target_values['esi']
                 diversity_dist = abs(recipe['diversity_score'] - target_values['diversity']) / target_values['diversity']
                 
                 # Minél kisebb a távolság, annál nagyobb a súly
@@ -125,10 +147,10 @@ def generate_target_choices_for_group_with_diversity(group, target_values, recip
             'recipe_id': chosen_recipe['id'],
             'group_name': group,
             'timestamp': (datetime.now() - timedelta(days=random.randint(0, 30))).isoformat(),
-            'hsi': chosen_recipe['hsi'],
-            'esi': chosen_recipe['esi'],
-            'ppi': chosen_recipe.get('ppi', 60),
-            'composite_score': chosen_recipe.get('composite_score', chosen_recipe['hsi'] + chosen_recipe['esi']),
+            'hsi': chosen_recipe['HSI'],
+            'esi': chosen_recipe['ESI'],
+            'ppi': chosen_recipe.get('PPI', 60),
+            'composite_score': chosen_recipe.get('composite_score', chosen_recipe['HSI'] + chosen_recipe['ESI']),
             'diversity_score': chosen_recipe['diversity_score'],
             'group': group,
             'user_type': random.choice(['egeszsegtudatos', 'kornyezettudatos', 'kiegyensulyozott', 'ujdonsagkereso']),
