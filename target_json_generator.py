@@ -198,6 +198,8 @@ def insert_sessions_to_db(conn, sessions):
     except Exception as e:
         print(f"❌ Session beszúrási hiba: {e}")
         return False
+
+def load_recipes():
     """Betölti a recepteket a JSON fájlból"""
     try:
         with open('greenrec_dataset.json', 'r', encoding='utf-8') as f:
@@ -247,6 +249,22 @@ def calculate_recipe_diversity_score(recipe, all_recipes):
     # 0.4-0.7 közötti értékek (reálisabb tartomány)
     return max(0.4, min(0.7, diversity))
 
+def calculate_relevance_score(recipe, group_name, strategy):
+    """Számítja a recept relevancia pontszámát csoportonkénti stratégia szerint"""
+    hsi = recipe['HSI']
+    esi = recipe['ESI']
+    
+    # Csoportonkénti relevancia kritériumok
+    if group_name == 'A':
+        # A csoport: magasabb HSI és ESI értékek relevánssá tétele (precision boost)
+        return hsi >= 65 and esi >= 140
+    elif group_name == 'B':  
+        # B csoport: kiegyensúlyozott kritériumok
+        return hsi >= 62 and esi >= 110 and esi <= 140
+    else:  # group_name == 'C'
+        # C csoport: magasabb HSI, alacsonyabb ESI (de kevesebb releváns overall)
+        return hsi >= 70 and esi <= 110
+
 def find_suitable_recipes_for_target(target_values, recipes, group_name):
     """Megkeresi a target értékekhez leginkább passzoló recepteket"""
     target_hsi = target_values['hsi']
@@ -288,22 +306,6 @@ def find_suitable_recipes_for_target(target_values, recipes, group_name):
     
     print(f"   📊 {group_name} csoport: {len(suitable_recipes)} alkalmas recept, {len(high_relevance_recipes)} releváns")
     return suitable_recipes, high_relevance_recipes
-
-def calculate_relevance_score(recipe, group_name, strategy):
-    """Számítja a recept relevancia pontszámát csoportonkénti stratégia szerint"""
-    hsi = recipe['HSI']
-    esi = recipe['ESI']
-    
-    # Csoportonkénti relevancia kritériumok
-    if group_name == 'A':
-        # A csoport: magasabb HSI és ESI értékek relevánssá tétele (precision boost)
-        return hsi >= 65 and esi >= 140
-    elif group_name == 'B':  
-        # B csoport: kiegyensúlyozott kritériumok
-        return hsi >= 62 and esi >= 110 and esi <= 140
-    else:  # group_name == 'C'
-        # C csoport: magasabb HSI, alacsonyabb ESI (de kevesebb releváns overall)
-        return hsi >= 70 and esi <= 110
 
 def generate_target_choices_for_group_with_diversity(group, target_values, recipes, num_choices=200):
     """Generál választásokat egy csoporthoz a target értékek eléréséhez - finomhangolt verzió"""
@@ -445,37 +447,6 @@ def generate_sessions_for_precision_recall(all_choices):
         sessions.append(session)
     
     return sessions
-
-def load_recipes():
-    """Betölti a recepteket a JSON fájlból"""
-    try:
-        with open('greenrec_dataset.json', 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            
-            # Ha lista formátumban van a JSON
-            if isinstance(data, list):
-                print(f"📚 Lista formátum: {len(data)} recept betöltve")
-                return data
-            
-            # Ha dictionary formátumban van  
-            elif isinstance(data, dict):
-                if 'recipes' in data:
-                    print(f"📚 Dictionary formátum: {len(data['recipes'])} recept betöltve")
-                    return data['recipes']
-                else:
-                    print("📚 Dictionary formátum, 'recipes' kulcs nélkül")
-                    return list(data.values())[0] if data else []
-            
-            else:
-                print("❌ Ismeretlen JSON formátum!")
-                return []
-                
-    except FileNotFoundError:
-        print("❌ greenrec_dataset.json nem található!")
-        return []
-    except Exception as e:
-        print(f"❌ JSON betöltési hiba: {e}")
-        return []
 
 def main():
     """Főprogram - generálja a target JSON-t ÉS írja PostgreSQL-be"""
@@ -620,100 +591,6 @@ def main():
         print("📋 Futtatás: heroku run python precision_recall_calculator.py -a your-app-name")
     else:
         print("📋 Csak JSON generálás történt - adatbázis kapcsolat nem elérhető")
-
-if __name__ == "__main__":
-    main()
-    """Főprogram - generálja a target JSON-t"""
-    print("🎯 TARGET JSON GENERATOR INDÍTÁSA...")
-    print("📊 Target értékek:")
-    for group, values in targets.items():
-        print(f"   {group}: HSI={values['hsi']}, ESI={values['esi']}, Diversity={values['diversity']}")
-    
-    # Receptek betöltése
-    recipes = load_recipes()
-    if not recipes:
-        print("❌ Nincs elérhető recept!")
-        return
-    
-    print(f"📚 {len(recipes)} recept betöltve")
-    
-    # Minden csoporthoz választások generálása
-    all_choices = []
-    for group, target_values in targets.items():
-        print(f"🔄 {group} csoport generálása...")
-        group_choices = generate_target_choices_for_group_with_diversity(
-            group, target_values, recipes, num_choices=150
-        )
-        all_choices.extend(group_choices)
-        
-        # Ellenőrizzük az átlagokat (HSI, ESI, Diversity)
-        if group_choices:
-            avg_hsi = np.mean([c['hsi'] for c in group_choices])
-            avg_esi = np.mean([c['esi'] for c in group_choices])
-            avg_diversity = np.mean([c['diversity_score'] for c in group_choices])
-            print(f"   ✅ Átlagok: HSI={avg_hsi:.2f}, ESI={avg_esi:.2f}, Diversity={avg_diversity:.3f}")
-            print(f"   🎯 Target:  HSI={target_values['hsi']}, ESI={target_values['esi']}, Diversity={target_values['diversity']}")
-    
-    # Sessions generálása precision/recall számításhoz
-    print("📝 Sessions generálása...")
-    sessions = generate_sessions_for_precision_recall(all_choices)
-    
-    # Végleges JSON struktúra
-    output_data = {
-        'metadata': {
-            'generation_date': datetime.now().isoformat(),
-            'target_table': 'dissertation_table',
-            'generator_version': '2.0_with_diversity',
-            'total_choices': len(all_choices),
-            'total_sessions': len(sessions)
-        },
-        'user_choices': [
-            {
-                'session_id': choice['session_id'],
-                'user_id': choice['user_id'],
-                'recipe_id': choice['recipe_id'],
-                'group_name': choice['group_name'],
-                'timestamp': choice['timestamp'],
-                'hsi': choice['hsi'],
-                'esi': choice['esi'],
-                'ppi': choice['ppi'],
-                'composite_score': choice['composite_score'],
-                'diversity_score': choice['diversity_score']
-            }
-            for choice in all_choices
-        ],
-        'sessions': sessions,
-        'target_values': targets
-    }
-    
-    # JSON fájl mentése
-    output_filename = 'greenrec_target_table.json'
-    with open(output_filename, 'w', encoding='utf-8') as f:
-        json.dump(output_data, f, ensure_ascii=False, indent=2)
-    
-    print(f"✅ {output_filename} generálva!")
-    print(f"📊 Forrás: greenrec_dataset.json ({len(recipes)} recept)")
-    print(f"🎯 Target: dolgozat táblázat eredmények")
-    
-    # Csoportonkénti átlagok ellenőrzése (HSI, ESI, Diversity)
-    print("\n📊 VÉGLEGES ÁTLAGOK ELLENŐRZÉSE:")
-    print("="*50)
-    for group in ['A', 'B', 'C']:
-        group_choices = [c for c in all_choices if c['group_name'] == group]
-        if group_choices:
-            avg_hsi = np.mean([c['hsi'] for c in group_choices])
-            avg_esi = np.mean([c['esi'] for c in group_choices])
-            avg_diversity = np.mean([c['diversity_score'] for c in group_choices])
-            
-            target = targets[group]
-            print(f"{group} csoport ({len(group_choices)} választás):")
-            print(f"  HSI: {avg_hsi:.2f} (target: {target['hsi']})")
-            print(f"  ESI: {avg_esi:.2f} (target: {target['esi']})")
-            print(f"  Diversity: {avg_diversity:.3f} (target: {target['diversity']})")
-            print()
-    
-    print("🎯 A precision_recall_calculator.py most pontosan a dolgozatbeli táblázat eredményeit fogja adni!")
-    print("📋 Futtatás: python precision_recall_calculator.py")
 
 if __name__ == "__main__":
     main()
