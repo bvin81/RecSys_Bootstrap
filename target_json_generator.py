@@ -662,7 +662,7 @@ def main():
     with open(backup_filename, 'w', encoding='utf-8') as f:
         json.dump(backup_data, f, ensure_ascii=False, indent=2)
     
-    print(f"✅ {backup_filename} generálva! (backup)
+    print(f"✅ {backup_filename} generálva! (backup)")
     print(f"📊 Forrás: greenrec_dataset.json ({len(recipes)} recept)")
     print(f"🎯 Target: dolgozat táblázat eredmények")
     print(f"📄 Precision/Recall JSON: {output_filename}")
