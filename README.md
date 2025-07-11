@@ -1,19 +1,19 @@
-# GreenRec Ajánlórendszer 🌱
+# GreenRec Ajánlórendszer 
 
 Fenntarthatósági alapú recept ajánlórendszer A/B/C tesztekkel. A projekt célja annak vizsgálata, hogy a HSI/ESI/PPI pontszámok és magyarázatok megjelenítése hogyan befolyásolja a felhasználói döntéseket.
 
-## 📋 Projekt Áttekintés
+## 📋 Projekt áttekintés
 
-**Kutatási kérdés:** Mennyire befolyásolják a fenntarthatósági pontszámok (HSI, ESI, PPI) a felhasználói döntéseket?
+**Kutatási kérdés:** Mennyire befolyásolják a fenntarthatósági pontszámok (HSI, ESI) a felhasználói döntéseket?
 
-**Hipotézis:** A C csoport (pontszámok + magyarázat) választásainak átlagos kompozit pontszáma lesz a legmagasabb, majd a B csoport (csak pontszámok), végül az A csoport (kontroll).
+**Hipotézis:** A C csoport (pontszámok + magyarázat) választásainak átlagos HSI/ESI pontszáma lesz a legmagasabb, majd a B csoport (csak pontszámok), végül az A csoport (kontroll).
 
 **Tesztcsoportok:**
 - **A csoport (Kontroll):** Alapvető recept információk, pontszámok nélkül
 - **B csoport:** Receptek + HSI/ESI/PPI pontszámok megjelenítése  
 - **C csoport:** Receptek + pontszámok + XAI demonstratív magyarázat
 
-## 🏗️ Technológiai Stack
+## 🏗️ Technológiai stack
 
 - **Backend:** Flask (Python)
 - **Adatbázis:** PostgreSQL (Heroku Postgres)
@@ -22,7 +22,7 @@ Fenntarthatósági alapú recept ajánlórendszer A/B/C tesztekkel. A projekt c�
 - **Deployment:** Heroku
 - **Version Control:** GitHub
 
-## 📁 Projekt Struktúra
+## 📁 Projekt struktúra
 
 ```
 greenrec-recommender/
@@ -39,11 +39,11 @@ greenrec-recommender/
 │   ├── results.html
 │   └── stats.html
 ├── static/              # CSS/JS fájlok (opcionális)
-├── greenrec_recipes.csv # Receptek adatfájl
-└── README.md           # Ez a fájl
+├── greenrec_recipes.json # Receptek adatfájl
+└── README.md           
 ```
 
-## 🚀 Helyi Fejlesztési Környezet
+## 🚀 Helyi fejlesztési környezet
 
 ### 1. Előfeltételek
 
@@ -55,14 +55,14 @@ python --version
 git --version
 ```
 
-### 2. Projekt Klónozása
+### 2. Projekt klónozása
 
 ```bash
 git clone https://github.com/your-username/greenrec-recommender.git
 cd greenrec-recommender
 ```
 
-### 3. Virtual Environment
+### 3. Virtual environment
 
 ```bash
 # Virtual environment létrehozása
@@ -75,13 +75,13 @@ venv\Scripts\activate
 source venv/bin/activate
 ```
 
-### 4. Függőségek Telepítése
+### 4. Függőségek telepítése
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 5. Helyi PostgreSQL Beállítás (Opcionális)
+### 5. Helyi PostgreSQL beállítás (Opcionális)
 
 ```bash
 # PostgreSQL telepítése és adatbázis létrehozása
@@ -90,15 +90,15 @@ createdb greenrec_local
 # Vagy használd a Heroku Postgres-t fejlesztéshez is
 ```
 
-### 6. Adatbázis Inicializálás
+### 6. Adatbázis inicializálás
 
 ```bash
-# CSV fájl elhelyezése (greenrec_recipes.csv)
+# json fájl elhelyezése (greenrec_recipes.json)
 # Majd adatbázis inicializálás:
 python load_data.py
 ```
 
-### 7. Alkalmazás Futtatása
+### 7. Alkalmazás futtatása
 
 ```bash
 # Fejlesztői mód
@@ -108,15 +108,13 @@ python app.py
 flask run
 ```
 
-Alkalmazás elérhető: `http://localhost:5000`
-
 ## 🌐 Heroku Deployment
 
-### 1. Heroku CLI Telepítése
+### 1. Heroku CLI telepítése
 
 [Heroku CLI letöltése](https://devcenter.heroku.com/articles/heroku-cli)
 
-### 2. Heroku Alkalmazás Létrehozása
+### 2. Heroku alkalmazás létrehozása
 
 ```bash
 # Bejelentkezés
@@ -129,7 +127,7 @@ heroku create your-app-name
 heroku addons:create heroku-postgresql:mini
 ```
 
-### 3. Environment Variables Beállítása
+### 3. Environment variables beállítása
 
 ```bash
 # Titkos kulcs beállítása
@@ -150,17 +148,17 @@ git push heroku main
 heroku run python load_data.py
 ```
 
-### 5. Alkalmazás Megnyitása
+### 5. Alkalmazás megnyitása
 
 ```bash
 heroku open
 ```
 
-## 📊 CSV Adatfájl Formátum
+## 📊 json adatfájl formátum
 
-Az alkalmazás a következő CSV formátumot várja (`greenrec_recipes.csv`):
+Az alkalmazás a következő json formátumot várja (`greenrec_recipes.json`):
 
-```csv
+```json
 recipeid,env_score,nutri_score,meal_score,name,ingredients,instructions,category,images
 317804,216.94,70.88,75,"New Orleans-i töltött paprika","fokhagyma, hagyma, paprika","Süsd meg a húst...","Hús","https://..."
 421807,206.13,57.50,90,"Minestrone leves","marhahús, víz, hagyma","Keverd össze...","Leves","https://..."
@@ -177,9 +175,9 @@ recipeid,env_score,nutri_score,meal_score,name,ingredients,instructions,category
 - `category`: Étel kategória
 - `images`: Kép URL
 
-## 🔧 Konfigurációs Beállítások
+## 🔧 Konfigurációs beállítások
 
-### Environment Variables
+### Environment variables
 
 ```bash
 # Kötelező
@@ -191,7 +189,7 @@ FLASK_ENV=development
 FLASK_DEBUG=True
 ```
 
-### Ajánlórendszer Paraméterei
+### Ajánlórendszer paraméterei
 
 Az `app.py` fájlban módosítható súlyok:
 
@@ -202,20 +200,20 @@ esi_weight = 0.4    # Környezeti súly (inverz)
 ppi_weight = 0.2    # Népszerűségi súly
 
 # Végső ajánlás súlyai
-content_weight = 0.6   # Content-based similarity súly
-score_weight = 0.4     # Kompozit pontszám súly
+content_weight = 0.5   # Content-based similarity súly
+score_weight = 0.5     # Kompozit pontszám súly
 ```
 
-## 📈 Metrikák és Értékelés
+## 📈 Metrikák és értékelés
 
-### Implementált Metrikák
+### Implementált metrikák
 
 1. **Csoportonkénti felhasználószám** - A/B/C tesztek egyenletes eloszlása
 2. **Átlagos pontszámok** - HSI, ESI, PPI átlagok csoportonként
 3. **Választások száma** - Felhasználói aktivitás mérése
 4. **Kompozit pontszám** - `0.4*HSI + 0.4*(1-ESI_norm) + 0.2*PPI`
 
-### Statisztikai Elemzés
+### Statisztikai elemzés
 
 A `/stats` endpoint alapvető statisztikákat mutat. Részletes elemzéshez exportálhatók az adatok:
 
@@ -233,57 +231,10 @@ LEFT JOIN recipes r ON uc.recipe_id = r.id
 GROUP BY u.group_name;
 ```
 
-## 🐛 Hibaelhárítás
 
-### Gyakori Problémák
+## 📚 API végpontok
 
-1. **Adatbázis kapcsolati hiba**
-```bash
-# Ellenőrizd a DATABASE_URL environment variable-t
-echo $DATABASE_URL
-
-# Heroku-n:
-heroku config:get DATABASE_URL
-```
-
-2. **CSV betöltési problémák**
-```bash
-# Karakterkódolás problémák esetén
-# Próbáld meg más encoding-gal (UTF-8, Latin-1)
-# A load_data.py automatikusan próbál többfélével
-```
-
-3. **Heroku deployment hibák**
-```bash
-# Heroku logs megtekintése
-heroku logs --tail
-
-# Adatbázis kapcsolat tesztelése
-heroku run python -c "from app import get_db_connection; print('DB OK')"
-```
-
-4. **Üres ajánlások**
-```bash
-# Ellenőrizd hogy van-e adat az adatbázisban
-heroku run python -c "
-from app import get_db_connection
-import psycopg2
-conn = get_db_connection()
-cur = conn.cursor()
-cur.execute('SELECT COUNT(*) FROM recipes;')
-print(f'Receptek száma: {cur.fetchone()[0]}')
-"
-```
-
-### Environment Setup Hibák
-
-- **Virtual environment aktiválás**: Mindig aktiváld a venv-et fejlesztés előtt
-- **Requirements telepítés**: `pip install -r requirements.txt` minden új klónozás után
-- **Port konflik**: Ha a 5000-es port foglalt, használd: `flask run --port=8000`
-
-## 📚 API Endpoints
-
-### Publikus Endpoints
+### Publikus végpontok
 
 - `GET /` - Főoldal (bejelentkezés szükséges)
 - `GET /login` - Bejelentkezési oldal
@@ -292,29 +243,17 @@ print(f'Receptek száma: {cur.fetchone()[0]}')
 - `POST /register` - Regisztráció feldolgozása
 - `GET /logout` - Kijelentkezés
 
-### Védett Endpoints
+### Védett végpontok
 
 - `POST /recommend` - Ajánlások generálása
 - `POST /select_recipe` - Receptválasztás rögzítése (AJAX)
 - `GET /stats` - Statisztikai áttekintő
 
-### Response Formátumok
 
-```json
-// POST /select_recipe válasz
-{
-  "success": true
-}
 
-// Hiba esetén
-{
-  "error": "Error message"
-}
-```
+## 🧪 Tesztelési útmutató
 
-## 🧪 Tesztelési Útmutató
-
-### 1. Funkcionális Tesztelés
+### 1. Funkcionális tesztelés
 
 **A csoport tesztelése:**
 1. Regisztrálj új felhasználót
@@ -331,7 +270,7 @@ print(f'Receptek száma: {cur.fetchone()[0]}')
 1. Regisztrálj harmadik felhasználót
 2. Ellenőrizd, hogy látszanak pontszámok ÉS magyarázat
 
-### 2. Adatintegritás Ellenőrzése
+### 2. Adatintegritás ellenőrzése
 
 ```sql
 -- Felhasználók egyenletes eloszlásának ellenőrzése
@@ -342,7 +281,7 @@ SELECT COUNT(*) FROM user_choices;
 SELECT COUNT(*) FROM user_interactions;
 ```
 
-### 3. Ajánlórendszer Tesztelése
+### 3. Ajánlórendszer tesztelése
 
 ```python
 # Python konzolban tesztelés
@@ -351,9 +290,9 @@ recommendations = recommender.recommend_by_id(1, top_n=5)
 print(recommendations[['title', 'composite_score']])
 ```
 
-## 📊 Kutatási Adatok Exportálása
+## Kutatási adatok exportálása
 
-### Excel Export Script
+### Excel export script
 
 ```python
 import pandas as pd
@@ -396,53 +335,9 @@ def export_research_data():
 export_research_data()
 ```
 
-## 🔄 Verziókezelés és Collaboration
+##  Következő lépések
 
-### Git Workflow
-
-```bash
-# Feature branch létrehozása
-git checkout -b feature/new-metrics
-
-# Változások commitolása
-git add .
-git commit -m "feat: új metrikák hozzáadása"
-
-# Push és Pull Request
-git push origin feature/new-metrics
-```
-
-### Heroku Auto-Deploy Beállítása
-
-1. Heroku Dashboard → App Settings
-2. GitHub integration bekapcsolása
-3. Automatic deploys engedélyezése main branch-ből
-
-## 📄 Licenc és Hivatkozás
-
-Ez a projekt kutatási célra készült. Ha felhasználod a kódot vagy az ötleteket:
-
-```
-@software{greenrec_recommender,
-  title = {GreenRec: Sustainability-focused Recipe Recommender System},
-  author = {[Your Name]},
-  year = {2025},
-  url = {https://github.com/your-username/greenrec-recommender}
-}
-```
-
-## 🆘 Támogatás
-
-Ha problémába ütközöl:
-
-1. **Hibaelhárítás**: Ellenőrizd a fenti hibaelhárítási szekciókat
-2. **Logs**: `heroku logs --tail` parancs segít a hibák azonosításában  
-3. **GitHub Issues**: Nyiss issue-t a repository-ban
-4. **Dokumentáció**: Flask és scikit-learn hivatalos dokumentációk
-
-## 🚀 Következő Lépések
-
-### Fejlesztési Lehetőségek
+### Fejlesztési lehetőségek
 
 1. **Továbbfejlesztett metrikák**: Precision@K, Recall@K, Diversity, Novelty
 2. **Valós XAI integráció**: LIME vagy SHAP alapú magyarázatok
@@ -451,7 +346,7 @@ Ha problémába ütközöl:
 5. **Real-time analytics**: Dashboard kibővítése
 6. **Mobile-friendly UI**: Responsive design javítása
 
-### Kutatási Kiterjesztések
+### Kutatási kiterjesztések
 
 1. **Longitudinális vizsgálat**: Hosszú távú felhasználói viselkedés
 2. **Több tesztcsoport**: D, E csoportok más megközelítésekkel
@@ -459,6 +354,4 @@ Ha problémába ütközöl:
 4. **Eye-tracking**: Vizuális figyelem mérése
 5. **A/B/C/D teszt**: További változók tesztelése
 
----
 
-**Jó kódolást! 🌱💻**
