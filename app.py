@@ -55,13 +55,18 @@ except ImportError as e:
     logger.warning(f"⚠️ Vizualizációs modul nem elérhető: {e}")
 
 def generate_xai_explanation(recipe):
-    """XAI magyarázat generálása a C csoport számára"""
+    """XAI magyarázat generálása a C csoport számára - csak jó receptekhez"""
     hsi = recipe.get('hsi', 0)
     esi = recipe.get('esi', 255)
     ppi = recipe.get('ppi', 0)
     
     # ESI normalizálás megjelenítéshez (0-100)
     esi_display = (esi / 255.0) * 100
+    
+    # ELLENŐRZÉS: Csak akkor adjunk magyarázatot, ha legalább egy metrika jó
+    # HSI >= 50, ESI_display <= 66, vagy PPI >= 50
+    if hsi < 50 and esi_display > 66 and ppi < 50:
+        return None  # Nem adjunk magyarázatot rossz receptekhez
     
     # Kompozit pontszám
     hsi_norm = hsi / 100.0
@@ -71,29 +76,34 @@ def generate_xai_explanation(recipe):
     
     explanations = []
     
-    # HSI magyarázat
+    # HSI magyarázat - csak ha jó (>= 50)
     if hsi >= 80:
-        explanations.append("🟢 Nagyon egészséges - magas tápérték")
+        explanations.append("Nagyon egészséges - magas tápérték")
     elif hsi >= 60:
-        explanations.append("🟡 Egészséges - jó tápérték")
-    else:
-        explanations.append("🔴 Átlagos tápérték")
+        explanations.append("Egészséges - jó tápérték")
+    elif hsi >= 50:
+        explanations.append("Átlagos tápérték")
+    # Ha HSI < 50, nem adjunk hozzá magyarázatot
     
-    # ESI magyarázat
+    # ESI magyarázat - csak ha jó (<= 66)
     if esi_display <= 30:
-        explanations.append("🌱 Környezetbarát - alacsony hatás")
+        explanations.append("Környezetbarát - alacsony hatás")
     elif esi_display <= 60:
-        explanations.append("🌿 Közepes környezeti hatás")
-    else:
-        explanations.append("🌋 Magasabb környezeti terhelés")
+        explanations.append("Közepes környezeti hatás")
+    # Ha ESI > 60, nem adjunk hozzá magyarázatot
     
-    # PPI magyarázat
+    # PPI magyarázat - csak ha jó (>= 50)
     if ppi >= 80:
-        explanations.append("⭐ Nagyon népszerű")
+        explanations.append("Nagyon népszerű")
     elif ppi >= 60:
-        explanations.append("👍 Népszerű választás")
-    else:
-        explanations.append("👌 Közkedvelt")
+        explanations.append("Népszerű választás")
+    elif ppi >= 50:
+        explanations.append("Közkedvelt")
+    # Ha PPI < 50, nem adjunk hozzá magyarázatot
+    
+    # Ha nincs legalább 2 jó tulajdonság, ne adjunk magyarázatot
+    if len(explanations) < 2:
+        return None
     
     # Fő indoklás
     if hsi >= 70 and esi_display <= 40:
@@ -102,6 +112,8 @@ def generate_xai_explanation(recipe):
         main_reason = "Azért ajánljuk, mert nagyon egészséges! 💚"
     elif esi_display <= 30:
         main_reason = "Azért ajánljuk, mert környezetbarát! 🌱"
+    elif ppi >= 80:
+        main_reason = "Azért ajánljuk, mert nagyon népszerű! ⭐"
     else:
         main_reason = "Azért ajánljuk, mert kiegyensúlyozott választás! ⚖️"
     
