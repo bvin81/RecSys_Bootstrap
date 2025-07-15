@@ -45,7 +45,7 @@
     <!-- Add hozzá a base.html végére, a </body> tag ELŐTT: -->
 
     <script>
-    // ===== GLOBÁLIS KÉP FALLBACK FUNKCIÓ =====
+    // ===== JAVÍTOTT GLOBÁLIS KÉP FALLBACK FUNKCIÓ =====
     function getPlaceholderImage(category) {
         const placeholders = {
             'Főételek': 'https://via.placeholder.com/300x200/4CAF50/white?text=🍽️+Főétel',
@@ -75,80 +75,154 @@
     
     function handleImageError(img) {
         // Megakadályozza a végtelen loop-ot
-        if (img.src.includes('via.placeholder.com')) {
+        if (img.src.includes('via.placeholder.com') || img.hasAttribute('data-fallback-applied')) {
             return;
         }
         
-        // Kategória meghatározása különböző módokon
+        console.log(`🖼️ Hibás kép észlelve: ${img.src}`);
+        
+        // Kategória meghatározása
         let category = 'Általános';
         
-        // 1. data-category attribútumból
+        // 1. data-category attribútumból (legmegbízhatóbb)
         if (img.hasAttribute('data-category')) {
             category = img.getAttribute('data-category');
         }
-        // 2. szülő elemekből keresés
+        // 2. Recept card-ból keresés
         else {
-            const card = img.closest('.recipe-card') || img.closest('.card');
-            if (card) {
-                const categoryElement = card.querySelector('.category-badge') || 
-                                      card.querySelector('[class*="category"]') ||
-                                      card.querySelector('.badge');
-                if (categoryElement) {
-                    category = categoryElement.textContent.trim();
+            const recipeCard = img.closest('.recipe-card') || img.closest('.card') || img.closest('[class*="recipe"]');
+            if (recipeCard) {
+                // Keresés kategória badge-ben
+                const categoryBadge = recipeCard.querySelector('.badge') || 
+                                     recipeCard.querySelector('[class*="category"]') ||
+                                     recipeCard.querySelector('.text-muted');
+                if (categoryBadge && categoryBadge.textContent.trim()) {
+                    category = categoryBadge.textContent.trim();
+                }
+                
+                // Ha nincs badge, próbáljuk a receptcímből kitalálni
+                if (category === 'Általános') {
+                    const titleElement = recipeCard.querySelector('h5') || 
+                                       recipeCard.querySelector('h4') || 
+                                       recipeCard.querySelector('.card-title');
+                    if (titleElement) {
+                        const title = titleElement.textContent.toLowerCase();
+                        if (title.includes('leves')) category = 'Levesek';
+                        else if (title.includes('saláta')) category = 'Saláták';
+                        else if (title.includes('desszert') || title.includes('süti')) category = 'Desszertek';
+                        else if (title.includes('tészta')) category = 'Tésztafélék';
+                        else if (title.includes('hús') || title.includes('sertés')) category = 'Sertés';
+                        else if (title.includes('csirke')) category = 'Csirke';
+                        else if (title.includes('hal')) category = 'Hal';
+                        else category = 'Főételek';
+                    }
                 }
             }
         }
         
-        // 3. alt attribútumból
+        // 3. alt attribútumból utolsó esély
         if (category === 'Általános' && img.alt) {
             category = img.alt;
         }
         
         // Placeholder kép beállítása
-        img.src = getPlaceholderImage(category);
-        img.alt = `${category} recept`;
+        const newSrc = getPlaceholderImage(category);
+        img.src = newSrc;
+        img.alt = `${category} recept (placeholder)`;
         
-        // Vizuális jelzés hogy placeholder
-        img.style.border = '2px dashed rgba(0,0,0,0.1)';
-        img.style.opacity = '0.9';
+        // Megjelölés hogy már alkalmaztuk a fallback-et
+        img.setAttribute('data-fallback-applied', 'true');
         
-        console.log(`🖼️ Kép javítva: ${category} → placeholder`);
+        // Vizuális jelzés
+        img.style.border = '2px dashed rgba(108, 117, 125, 0.3)';
+        img.style.opacity = '0.85';
+        
+        console.log(`✅ Kép javítva: ${category} → ${newSrc}`);
     }
     
-    // Automatikus kép javítás minden oldalon
-    document.addEventListener('DOMContentLoaded', function() {
-        // Minden receptkép automatikus védelem
-        function protectImages() {
-            const images = document.querySelectorAll('img');
-            images.forEach(img => {
-                // Ha még nincs error handler
-                if (!img.hasAttribute('data-protected')) {
-                    img.onerror = () => handleImageError(img);
-                    img.setAttribute('data-protected', 'true');
-                    
-                    // Azonnal ellenőrizzük a hibás képeket
-                    if (img.src && (
-                        img.src.includes('sndimg.com') || 
-                        img.src.includes('food.com') ||
-                        img.src.startsWith('http://') ||
-                        img.src.includes('broken')
-                    )) {
-                        handleImageError(img);
-                    }
+    // Hibás URL-ek listája (proaktív ellenőrzéshez)
+    const KNOWN_BAD_DOMAINS = [
+        'sndimg.com',
+        'food.com',
+        'broken',
+        'error',
+        'localhost',
+        '127.0.0.1'
+    ];
+    
+    function isLikelyBrokenUrl(url) {
+        if (!url || url === '' || url === 'null' || url === 'undefined') return true;
+        
+        // HTTP helyett HTTPS probléma
+        if (url.startsWith('http://') && !url.includes('via.placeholder.com')) return true;
+        
+        // Ismert hibás domainek
+        return KNOWN_BAD_DOMAINS.some(domain => url.includes(domain));
+    }
+    
+    function protectImages() {
+        const images = document.querySelectorAll('img');
+        console.log(`🔍 ${images.length} kép ellenőrzése...`);
+        
+        images.forEach(img => {
+            // Skip ha már védett
+            if (img.hasAttribute('data-protected')) return;
+            
+            // Error handler hozzáadása
+            img.onerror = () => handleImageError(img);
+            img.setAttribute('data-protected', 'true');
+            
+            // Proaktív ellenőrzés hibás URL-ekre
+            if (img.src && isLikelyBrokenUrl(img.src)) {
+                console.log(`⚠️ Proaktív javítás: ${img.src}`);
+                handleImageError(img);
+            }
+            
+            // Load timeout - ha 5 másodperc alatt nem töltődik be
+            const loadTimeout = setTimeout(() => {
+                if (!img.complete || img.naturalWidth === 0) {
+                    console.log(`⏰ Timeout: ${img.src}`);
+                    handleImageError(img);
                 }
-            });
-        }
+            }, 5000);
+            
+            // Ha betöltődik, törljük a timeout-ot
+            img.onload = () => {
+                clearTimeout(loadTimeout);
+                // Ellenőrizzük hogy valóban valid kép-e
+                if (img.naturalWidth === 0 || img.naturalHeight === 0) {
+                    handleImageError(img);
+                }
+            };
+        });
+    }
+    
+    // DOM ready + dinamikus tartalom figyelése
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🖼️ Globális kép védelem aktiválása...');
         
         // Azonnali futtatás
         protectImages();
         
         // Dinamikus tartalom figyelése (AJAX ajánlások)
         const observer = new MutationObserver(function(mutations) {
+            let hasNewImages = false;
             mutations.forEach(function(mutation) {
                 if (mutation.addedNodes.length > 0) {
-                    protectImages();
+                    mutation.addedNodes.forEach(node => {
+                        if (node.nodeType === 1) { // Element node
+                            if (node.tagName === 'IMG' || node.querySelector('img')) {
+                                hasNewImages = true;
+                            }
+                        }
+                    });
                 }
             });
+            
+            if (hasNewImages) {
+                console.log('🔄 Új képek észlelve, védelem alkalmazása...');
+                setTimeout(protectImages, 100); // Kis késleltetés hogy a DOM frissüljön
+            }
         });
         
         // Figyeljük a DOM változásokat
@@ -157,12 +231,24 @@
             subtree: true
         });
         
-        console.log('🖼️ Globális kép védelem aktiválva');
+        console.log('✅ Globális kép védelem aktiválva');
     });
     
     // Globális segédfüggvény manuális használatra
     window.fixRecipeImage = function(imgElement, category) {
+        if (category) {
+            imgElement.setAttribute('data-category', category);
+        }
         handleImageError(imgElement);
+    };
+    
+    // Debug funkció
+    window.debugImages = function() {
+        const images = document.querySelectorAll('img');
+        console.log('🐛 Képek debug info:');
+        images.forEach((img, index) => {
+            console.log(`${index + 1}. ${img.src} - Protected: ${img.hasAttribute('data-protected')} - Fallback: ${img.hasAttribute('data-fallback-applied')}`);
+        });
     };
     </script>
 </body>
