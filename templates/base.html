@@ -45,7 +45,7 @@
     <!-- Add hozzá a base.html végére, a </body> tag ELŐTT: -->
 
     <script>
-        // ===== JAVÍTOTT GLOBÁLIS KÉP FALLBACK FUNKCIÓ =====
+          // ===== JAVÍTOTT GLOBÁLIS KÉP FALLBACK FUNKCIÓ =====
     function getPlaceholderImage(category) {
         // Placeholder.pics használata - megbízható és ingyenes
         const placeholders = {
@@ -162,12 +162,33 @@
     }
     
     function protectImages() {
+        // Standard img tagek + hibás HTML kezelése
         const images = document.querySelectorAll('img');
-        console.log(`🔍 ${images.length} kép ellenőrzése...`);
+        const brokenImages = document.querySelectorAll('[src*="sndimg.com"], [src*="food.com"], [src*="broken"]');
         
-        images.forEach(img => {
+        // Kombinálva: összes kép + hibás elemek
+        const allImages = new Set([...images, ...brokenImages]);
+        
+        console.log(`🔍 ${allImages.size} kép ellenőrzése (${images.length} standard + ${brokenImages.length - images.length} hibás HTML)...`);
+        
+        allImages.forEach(img => {
             // Skip ha már védett
             if (img.hasAttribute('data-protected')) return;
+            
+            // Hibás HTML javítása
+            if (!img.tagName || img.tagName !== 'IMG') {
+                // Ha nem img tag, de van src attribútuma, javítsuk
+                if (img.hasAttribute('src')) {
+                    const newImg = document.createElement('img');
+                    newImg.src = img.getAttribute('src');
+                    newImg.alt = img.getAttribute('alt') || 'Recept kép';
+                    newImg.className = img.className || 'recipe-image';
+                    img.parentNode.replaceChild(newImg, img);
+                    img = newImg; // Új elemre váltunk
+                } else {
+                    return; // Skip ha nincs src
+                }
+            }
             
             // Error handler hozzáadása
             img.onerror = () => handleImageError(img);
