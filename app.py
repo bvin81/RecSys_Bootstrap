@@ -107,15 +107,15 @@ def generate_xai_explanation(recipe):
     
     # Fő indoklás
     if hsi >= 70 and esi_display <= 40:
-        main_reason = "Azért ajánljuk, mert egészséges ÉS környezetbarát! 🌟"
+        main_reason = "Azért ajánljuk, mert egészséges és környezetbarát!"
     elif hsi >= 70:
-        main_reason = "Azért ajánljuk, mert nagyon egészséges! 💚"
+        main_reason = "Azért ajánljuk, mert nagyon egészséges!"
     elif esi_display <= 30:
-        main_reason = "Azért ajánljuk, mert környezetbarát! 🌱"
+        main_reason = "Azért ajánljuk, mert környezetbarát!"
     elif ppi >= 80:
-        main_reason = "Azért ajánljuk, mert nagyon népszerű! ⭐"
+        main_reason = "Azért ajánljuk, mert nagyon népszerű!"
     else:
-        main_reason = "Azért ajánljuk, mert kiegyensúlyozott választás! ⚖️"
+        main_reason = "Azért ajánljuk, mert kiegyensúlyozott választás!"
     
     return {
         'main_reason': main_reason,
