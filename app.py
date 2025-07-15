@@ -64,8 +64,8 @@ def generate_xai_explanation(recipe):
     esi_display = (esi / 255.0) * 100
     
     # ELLENŐRZÉS: Csak akkor adjunk magyarázatot, ha legalább egy metrika jó
-    # HSI >= 50, ESI_display <= 66, vagy PPI >= 50
-    if hsi < 50 and esi_display > 66 and ppi < 50:
+    # HSI >= 50, ESI_display <= 50, vagy PPI >= 50
+    if hsi < 50 and esi_display > 50 and ppi < 50:
         return None  # Nem adjunk magyarázatot rossz receptekhez
     
     # Kompozit pontszám
@@ -88,9 +88,9 @@ def generate_xai_explanation(recipe):
     # ESI magyarázat - csak ha jó (<= 66)
     if esi_display <= 30:
         explanations.append("Környezetbarát - alacsony hatás")
-    elif esi_display <= 60:
+    elif esi_display <= 50:
         explanations.append("Közepes környezeti hatás")
-    # Ha ESI > 60, nem adjunk hozzá magyarázatot
+    # Ha ESI > 50, nem adjunk hozzá magyarázatot
     
     # PPI magyarázat - csak ha jó (>= 50)
     if ppi >= 80:
@@ -112,8 +112,6 @@ def generate_xai_explanation(recipe):
         main_reason = "Azért ajánljuk, mert nagyon egészséges!"
     elif esi_display <= 30:
         main_reason = "Azért ajánljuk, mert környezetbarát!"
-    elif ppi >= 80:
-        main_reason = "Azért ajánljuk, mert nagyon népszerű!"
     else:
         main_reason = "Azért ajánljuk, mert kiegyensúlyozott választás!"
     
