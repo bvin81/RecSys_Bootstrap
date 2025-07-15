@@ -55,65 +55,82 @@ except ImportError as e:
     logger.warning(f"⚠️ Vizualizációs modul nem elérhető: {e}")
 
 def generate_xai_explanation(recipe):
-    """XAI magyarázat generálása a C csoport számára - csak jó receptekhez"""
+    """XAI magyarázat generálása - a megjelenített értékek alapján"""
     hsi = recipe.get('hsi', 0)
     esi = recipe.get('esi', 255)
     ppi = recipe.get('ppi', 0)
     
-    # ESI normalizálás megjelenítéshez (0-100)
+    # A FELHASZNÁLÓ ÁLTAL LÁTOTT NORMALIZÁLT ESI HASZNÁLATA
+    # (Ugyanaz mint amit a weboldalon lát)
     esi_display = (esi / 255.0) * 100
     
-    # ELLENŐRZÉS: Csak akkor adjunk magyarázatot, ha legalább egy metrika jó
-    # HSI >= 50, ESI_display <= 50, vagy PPI >= 50
-    if hsi < 50 and esi_display > 50 and ppi < 50:
-        return None  # Nem adjunk magyarázatot rossz receptekhez
+    print(f"🔍 DEBUG - {recipe.get('title', 'Unknown')}")
+    print(f"   HSI: {hsi} (weboldal: {hsi})")
+    print(f"   ESI weboldal: {esi_display:.1f}")
+    print(f"   PPI: {ppi} (weboldal: {ppi})")
     
-    # Kompozit pontszám
-    hsi_norm = hsi / 100.0
-    esi_norm = (255 - esi) / 255.0
-    ppi_norm = ppi / 100.0
-    composite = (0.4 * hsi_norm + 0.4 * esi_norm + 0.2 * ppi_norm) * 100
+    # ELLENŐRZÉS: A WEBOLDALON LÁTHATÓ ÉRTÉKEK ALAPJÁN
+    # Csak akkor adjunk XAI-t, ha legalább sárga badge van
+    good_metrics = 0
+    
+    if hsi >= 50:  # HSI sárga/zöld
+        good_metrics += 1
+    if esi_display <= 66:  # ESI sárga/zöld (alacsonyabb = jobb)
+        good_metrics += 1
+    if ppi >= 50:  # PPI sárga/zöld
+        good_metrics += 1
+    
+    # Ha kevesebb mint 2 jó metrika, nincs XAI
+    if good_metrics < 2:
+        return None
     
     explanations = []
     
-    # HSI magyarázat - csak ha jó (>= 50)
-    if hsi >= 80:
+    # HSI magyarázat
+    if hsi >= 75:      # get_score_color szerint >= 75 = success
         explanations.append("Nagyon egészséges - magas tápérték")
-    elif hsi >= 60:
+    elif hsi >= 50:    # get_score_color szerint >= 50 = warning
         explanations.append("Egészséges - jó tápérték")
-    elif hsi >= 50:
-        explanations.append("Átlagos tápérték")
-    # Ha HSI < 50, nem adjunk hozzá magyarázatot
+    # Ha HSI < 50 = danger, nincs magyarázat
     
-    # ESI magyarázat - csak ha jó (<= 66)
-    if esi_display <= 30:
+    # ESI magyarázat - A WEBOLDALI LOGIKA SZERINT
+    if esi_display <= 33:     # get_score_color szerint <= 33 = success
         explanations.append("Környezetbarát - alacsony hatás")
-    elif esi_display <= 50:
+    elif esi_display <= 66:   # get_score_color szerint <= 66 = warning
         explanations.append("Közepes környezeti hatás")
-    # Ha ESI > 50, nem adjunk hozzá magyarázatot
+    # Ha esi_display > 66 = danger, nincs magyarázat
     
-    # PPI magyarázat - csak ha jó (>= 50)
-    if ppi >= 80:
+    # PPI magyarázat
+    if ppi >= 75:      # get_score_color szerint >= 75 = success
         explanations.append("Nagyon népszerű")
-    elif ppi >= 60:
+    elif ppi >= 50:    # get_score_color szerint >= 50 = warning
         explanations.append("Népszerű választás")
-    elif ppi >= 50:
-        explanations.append("Közkedvelt")
-    # Ha PPI < 50, nem adjunk hozzá magyarázatot
+    # Ha PPI < 50 = danger, nincs magyarázat
     
-    # Ha nincs legalább 2 jó tulajdonság, ne adjunk magyarázatot
-    if len(explanations) < 2:
+    # Ha nincs magyarázat, ne adjunk XAI-t
+    if len(explanations) == 0:
+        print(f"   ❌ Nincs pozitív magyarázat")
         return None
+    
+    # Kompozit pontszám számítása
+    hsi_norm = hsi / 100.0
+    esi_norm = (255 - esi) / 255.0  # Inverz az eredeti ESI-ből
+    ppi_norm = ppi / 100.0
+    composite = (0.4 * hsi_norm + 0.4 * esi_norm + 0.2 * ppi_norm) * 100
     
     # Fő indoklás
     if hsi >= 70 and esi_display <= 40:
-        main_reason = "Azért ajánljuk, mert egészséges és környezetbarát!"
+        main_reason = "Azért ajánljuk, mert egészséges ÉS környezetbarát!"
     elif hsi >= 70:
         main_reason = "Azért ajánljuk, mert nagyon egészséges!"
-    elif esi_display <= 30:
+    elif esi_display <= 33:
         main_reason = "Azért ajánljuk, mert környezetbarát!"
+    elif ppi >= 75:
+        main_reason = "Azért ajánljuk, mert nagyon népszerű!"
     else:
         main_reason = "Azért ajánljuk, mert kiegyensúlyozott választás!"
+    
+    print(f"   ✅ XAI generálva: {len(explanations)} magyarázat")
     
     return {
         'main_reason': main_reason,
