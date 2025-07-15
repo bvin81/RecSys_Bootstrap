@@ -55,66 +55,72 @@ except ImportError as e:
     logger.warning(f"⚠️ Vizualizációs modul nem elérhető: {e}")
 
 def generate_xai_explanation(recipe):
-    """
-    EGYSZERŰ XAI - badge színek alapján
-    Ha van legalább 1 zöld vagy sárga badge -> XAI
-    Ha minden badge piros -> nincs XAI
-    """
+    """XAI magyarázat generálása - JAVÍTOTT ESI kezelés"""
     hsi = recipe.get('hsi', 0)
-    esi = recipe.get('esi', 255)
+    esi = recipe.get('esi', 255)  # Ez már lehet normalizált!
     ppi = recipe.get('ppi', 0)
     
-    # ESI normalizálás weboldalhoz
-    esi_display = (esi / 255.0) * 100
+    # ELLENŐRZÉS: ESI már normalizált-e?
+    if esi <= 100:
+        # ESI már normalizált (0-100 skála)
+        esi_display = esi
+        print(f"🔍 DEBUG - {recipe.get('title', 'Unknown')} (ESI már normalizált)")
+    else:
+        # ESI még nyers (0-255 skála)
+        esi_display = (esi / 255.0) * 100
+        print(f"🔍 DEBUG - {recipe.get('title', 'Unknown')} (ESI nyers)")
     
-    # Badge színek meghatározása (ugyanaz mint get_score_color)
-    hsi_color = get_score_color(hsi, 'hsi')        # 75+ zöld, 50+ sárga, <50 piros
-    esi_color = get_score_color(esi_display, 'esi') # <=33 zöld, <=66 sárga, >66 piros
-    ppi_color = get_score_color(ppi, 'ppi')        # 75+ zöld, 50+ sárga, <50 piros
+    print(f"   HSI: {hsi}")
+    print(f"   ESI weboldal: {esi_display:.1f}")
+    print(f"   PPI: {ppi}")
     
-    print(f"🔍 XAI Check - {recipe.get('title', 'Unknown')}")
-    print(f"   HSI: {hsi} -> {hsi_color}")
-    print(f"   ESI: {esi_display:.1f} -> {esi_color}")
-    print(f"   PPI: {ppi} -> {ppi_color}")
+    # Badge színek ellenőrzése (get_score_color logika szerint)
+    hsi_color = 'success' if hsi >= 75 else 'warning' if hsi >= 50 else 'danger'
+    esi_color = 'success' if esi_display <= 33 else 'warning' if esi_display <= 66 else 'danger'
+    ppi_color = 'success' if ppi >= 75 else 'warning' if ppi >= 50 else 'danger'
     
-    # Ellenőrzés: van-e legalább 1 jó badge (zöld vagy sárga)?
+    print(f"   Badge színek: HSI({hsi_color}), ESI({esi_color}), PPI({ppi_color})")
+    
+    # Jó badge-ek számlálása
     good_badges = 0
-    if hsi_color in ['success', 'warning']:  # zöld vagy sárga
+    if hsi_color in ['success', 'warning']:
         good_badges += 1
-    if esi_color in ['success', 'warning']:  # zöld vagy sárga
+    if esi_color in ['success', 'warning']:
         good_badges += 1
-    if ppi_color in ['success', 'warning']:  # zöld vagy sárga
+    if ppi_color in ['success', 'warning']:
         good_badges += 1
     
     print(f"   Jó badge-ek: {good_badges}/3")
     
-    # ❌ Ha minden badge piros -> NINCS XAI
+    # Ha nincs elég jó badge, nincs XAI
     if good_badges == 0:
-        print("   ❌ Minden badge piros -> Nincs XAI")
+        print(f"   ❌ Nincs jó badge -> Nincs XAI")
         return None
     
-    # ✅ Van legalább 1 jó badge -> GENERÁLJ XAI
+    # Magyarázatok generálása - CSAK jó badge-ekhez
     explanations = []
     
-    # HSI magyarázat (csak ha jó a badge)
-    if hsi_color == 'success':  # zöld
+    # HSI magyarázat
+    if hsi_color == 'success':
         explanations.append("🟢 Nagyon egészséges - kiváló tápérték")
-    elif hsi_color == 'warning':  # sárga
+    elif hsi_color == 'warning':
         explanations.append("🟡 Egészséges - jó tápérték")
     
-    # ESI magyarázat (csak ha jó a badge)
-    if esi_color == 'success':  # zöld
+    # ESI magyarázat
+    if esi_color == 'success':
         explanations.append("🟢 Környezetbarát - alacsony hatás")
-    elif esi_color == 'warning':  # sárga
+    elif esi_color == 'warning':
         explanations.append("🟡 Közepes környezeti hatás")
     
-    # PPI magyarázat (csak ha jó a badge)
-    if ppi_color == 'success':  # zöld
+    # PPI magyarázat
+    if ppi_color == 'success':
         explanations.append("🟢 Nagyon népszerű")
-    elif ppi_color == 'warning':  # sárga
+    elif ppi_color == 'warning':
         explanations.append("🟡 Népszerű választás")
     
-    # Fő indoklás - az első jó tulajdonság alapján
+    print(f"   Magyarázatok: {explanations}")
+    
+    # Fő indoklás
     if hsi_color in ['success', 'warning'] and esi_color in ['success', 'warning']:
         main_reason = "Azért ajánljuk, mert egészséges ÉS környezetbarát! 🌟"
     elif hsi_color == 'success':
@@ -130,16 +136,20 @@ def generate_xai_explanation(recipe):
     elif ppi_color == 'warning':
         main_reason = "Azért ajánljuk, mert népszerű választás! ⭐"
     else:
-        main_reason = "Azért ajánljuk! 🍽️"  # fallback (nem kellene előfordulnia)
+        main_reason = "Azért ajánljuk! 🍽️"
     
-    # Kompozit pontszám
+    # Kompozit pontszám (ESI kezelés)
     hsi_norm = hsi / 100.0
-    esi_norm = (255 - esi) / 255.0
+    if esi <= 100:
+        # ESI már normalizált -> inverz
+        esi_norm = (100 - esi_display) / 100.0
+    else:
+        # ESI nyers -> normalizálás + inverz
+        esi_norm = (255 - esi) / 255.0
     ppi_norm = ppi / 100.0
     composite = (0.4 * hsi_norm + 0.4 * esi_norm + 0.2 * ppi_norm) * 100
     
     print(f"   ✅ XAI generálva: {main_reason}")
-    print(f"   📝 Magyarázatok: {explanations}")
     
     return {
         'main_reason': main_reason,
