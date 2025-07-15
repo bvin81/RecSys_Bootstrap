@@ -54,6 +54,63 @@ except ImportError as e:
     VISUALIZATIONS_AVAILABLE = False
     logger.warning(f"⚠️ Vizualizációs modul nem elérhető: {e}")
 
+def generate_xai_explanation(recipe):
+    """XAI magyarázat generálása a C csoport számára"""
+    hsi = recipe.get('hsi', 0)
+    esi = recipe.get('esi', 255)
+    ppi = recipe.get('ppi', 0)
+    
+    # ESI normalizálás megjelenítéshez (0-100)
+    esi_display = (esi / 255.0) * 100
+    
+    # Kompozit pontszám
+    hsi_norm = hsi / 100.0
+    esi_norm = (255 - esi) / 255.0
+    ppi_norm = ppi / 100.0
+    composite = (0.4 * hsi_norm + 0.4 * esi_norm + 0.2 * ppi_norm) * 100
+    
+    explanations = []
+    
+    # HSI magyarázat
+    if hsi >= 80:
+        explanations.append("🟢 Nagyon egészséges - magas tápérték")
+    elif hsi >= 60:
+        explanations.append("🟡 Egészséges - jó tápérték")
+    else:
+        explanations.append("🔴 Átlagos tápérték")
+    
+    # ESI magyarázat
+    if esi_display <= 30:
+        explanations.append("🌱 Környezetbarát - alacsony hatás")
+    elif esi_display <= 60:
+        explanations.append("🌿 Közepes környezeti hatás")
+    else:
+        explanations.append("🌋 Magasabb környezeti terhelés")
+    
+    # PPI magyarázat
+    if ppi >= 80:
+        explanations.append("⭐ Nagyon népszerű")
+    elif ppi >= 60:
+        explanations.append("👍 Népszerű választás")
+    else:
+        explanations.append("👌 Közkedvelt")
+    
+    # Fő indoklás
+    if hsi >= 70 and esi_display <= 40:
+        main_reason = "Azért ajánljuk, mert egészséges ÉS környezetbarát! 🌟"
+    elif hsi >= 70:
+        main_reason = "Azért ajánljuk, mert nagyon egészséges! 💚"
+    elif esi_display <= 30:
+        main_reason = "Azért ajánljuk, mert környezetbarát! 🌱"
+    else:
+        main_reason = "Azért ajánljuk, mert kiegyensúlyozott választás! ⚖️"
+    
+    return {
+        'main_reason': main_reason,
+        'explanations': explanations,
+        'composite_score': round(composite, 1)
+    }
+
 # Flask alkalmazás inicializálás
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
@@ -798,6 +855,9 @@ def recommend():
             rec['hsi_tooltip'] = f"Egészségességi mutató: {rec['hsi']:.1f} (magasabb = jobb)"
             rec['esi_tooltip'] = f"Környezeti hatás: {rec['esi']:.1f} (alacsonyabb = jobb)"
             rec['ppi_tooltip'] = f"Népszerűségi mutató: {rec['ppi']:.1f} (magasabb = jobb)"
+
+            if user_group == 'C':
+                rec['xai_explanation'] = generate_xai_explanation(rec)
             
             # Round-based tooltip info
             round_num = rec.get('round_number', 1)
