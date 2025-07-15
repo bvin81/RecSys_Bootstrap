@@ -102,21 +102,21 @@ def generate_xai_explanation(recipe):
     
     # HSI magyarázat
     if hsi_color == 'success':
-        explanations.append("🟢 Nagyon egészséges - kiváló tápérték")
+        explanations.append("Nagyon egészséges - kiváló tápérték")
     elif hsi_color == 'warning':
-        explanations.append("🟡 Egészséges - jó tápérték")
+        explanations.append("Egészséges - jó tápérték")
     
     # ESI magyarázat
     if esi_color == 'success':
-        explanations.append("🟢 Környezetbarát - alacsony hatás")
+        explanations.append("Környezetbarát - alacsony hatás")
     elif esi_color == 'warning':
-        explanations.append("🟡 Közepes környezeti hatás")
+        explanations.append("Közepes környezeti hatás")
     
     # PPI magyarázat
     if ppi_color == 'success':
-        explanations.append("🟢 Nagyon népszerű")
+        explanations.append("Nagyon népszerű")
     elif ppi_color == 'warning':
-        explanations.append("🟡 Népszerű választás")
+        explanations.append("Népszerű választás")
     
     print(f"   Magyarázatok: {explanations}")
     
@@ -128,9 +128,9 @@ def generate_xai_explanation(recipe):
     elif hsi_color == 'warning':
         main_reason = "Azért ajánljuk, mert egészséges! 💚"
     elif esi_color == 'success':
-        main_reason = "Azért ajánljuk, mert környezetbarát! 🌱"
+        main_reason = "Azért ajánljuk, mert környezetbarát! 🌍"
     elif esi_color == 'warning':
-        main_reason = "Azért ajánljuk, mert környezettudatos! 🌱"
+        main_reason = "Azért ajánljuk, mert környezettudatos! 🌍"
     elif ppi_color == 'success':
         main_reason = "Azért ajánljuk, mert nagyon népszerű! ⭐"
     elif ppi_color == 'warning':
